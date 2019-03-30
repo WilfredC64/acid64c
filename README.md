@@ -61,7 +61,7 @@ Escape (ESC) key: exit program
 ```
 
 ### ACID64Pro Library
-For documentation about the acid64pro.dll, see the [readme.txt](/library/readme.txt file) file in the library folder.
+For documentation about the acid64pro.dll, see the [readme.txt](/library/readme.txt) file in the library folder.
 
 ### Licensing
 The source code is licensed under the GPL v3 license. License is available [here](/LICENSE).
