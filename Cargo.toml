@@ -1,0 +1,24 @@
+[package]
+name = "acid64c"
+version = "1.0.4"
+authors = ["Wilfred Bos"]
+description = "ACID64 Console SID player."
+readme = "README.md"
+edition = "2018"
+license = "GPLv3"
+keywords = ["ACID64 console player", "sidplayer", "c64 music player", "SID 6581", "SID 8580"]
+build = "build.rs"
+
+[dependencies]
+libloading = "0.5"
+encoding = "0.2.33"
+crossterm_cursor = "0.1"
+crossterm_input = "0.1"
+crossterm_screen = "0.1"
+timer = "0.2.0"
+chrono = "0.4"
+get_if_addrs = "0.5.3"
+
+[profile.release]
+lto = true
+panic = "abort"
