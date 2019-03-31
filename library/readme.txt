@@ -15,10 +15,10 @@ RESULT OF USING THIS SOFTWARE.
 The library supports the following methods (in Delphi code):
 
   function getVersion(): Integer; stdcall; external 'acid64pro';
-
+  
   function createC64Instance(): Pointer; stdcall; external 'acid64pro';
   procedure closeC64Instance(c64: Pointer); stdcall; external 'acid64pro';
-
+  
   function checkSldb(filename: PChar): Boolean; stdcall; external 'acid64pro';
   function checkSldbFromBuffer(buffer: Pointer; size: Integer): Boolean; stdcall; external 'acid64pro';
   function loadSldb(filename: PChar): Boolean; stdcall; external 'acid64pro';
@@ -26,7 +26,7 @@ The library supports the following methods (in Delphi code):
   function getFilename(md5Hash: PChar): PChar; stdcall; external 'acid64pro';
   function loadStil(hvscLocation: PChar): Boolean; stdcall; external 'acid64pro';
   function loadStilFromBuffer(buffer: Pointer; size: Integer): Boolean; stdcall; external 'acid64pro';
-
+  
   // methods that need a C64 instance
   procedure run(c64: Pointer); stdcall; external 'acid64pro';
   function loadFile(c64: Pointer; filename: PChar): Boolean; stdcall; external 'acid64pro';
@@ -63,8 +63,8 @@ The library supports the following methods (in Delphi code):
   function isStereoSid(c64: Pointer): Boolean; stdcall; external 'acid64pro';
   function getNumberOfSids(c64: Pointer): Integer; stdcall; external 'acid64pro';
   function getAncientMd5Hash(c64: Pointer): PChar; stdcall; external 'acid64pro';
-
-
+  
+  
 getVersion
 ==========
 The 'getVersion' method returns the version number of the library in hex.
@@ -114,7 +114,7 @@ checkSldbFromBuffer method first since the loadSldbFromBuffer is performing the
 check as well.
 
 The passed pointer is the pointer to the buffer where the data of the SLDB is
-present. The passed size is the size of the buffer.
+present. The passed size is the size of the buffer. 
 
 
 checkSldb
@@ -136,7 +136,7 @@ The 'checkSldbFromBuffer' method checks if the SLDB data in the buffer is valid.
 If the data is valid then the method returns true otherwise false.
 
 The passed pointer is the pointer to the buffer where the data of the SLDB is
-present. The passed size is the size of the buffer.
+present. The passed size is the size of the buffer. 
 
 
 loadStil
@@ -192,31 +192,31 @@ return:
   SID_READ_COMMAND = 3;
   NEXT_PART_COMMAND = 4;
   SID_INIT_DONE_COMMAND = 5;
-
+  
 To run the emulator and control a SID device the following code can be used:
 
   Pointer c64 = createC64Instance();
   if (c64 != null) {
-    try {
-      if (loadFile(c64, filename) == true) {
-        while (true) {
-          run(c64);
-          sidCommand = getCommand(c64);
-
-          switch (sidCommand) {
-            case SID_DELAY_COMMAND:
-              deviceDelay(deviceNum, getCycles(c64));
-              break;
-            case SID_WRITE_COMMAND:
-              deviceWrite(deviceNum, getCycles(c64), getRegister(c64), getData(c64));
-              break;
-          }
-        }
-      }
-    } finally {
-      closeC64Instance(c64);
-    }
-  }
+	  try {
+		  if (loadFile(c64, filename) == true) {
+	      while (true) {
+	        run(c64);
+	        sidCommand = getCommand(c64);
+	      
+	        switch (sidCommand) {
+	          case SID_DELAY_COMMAND:
+	            deviceDelay(deviceNum, getCycles(c64));
+	            break;
+	          case SID_WRITE_COMMAND:
+	            deviceWrite(deviceNum, getCycles(c64), getRegister(c64), getData(c64));
+	            break;
+	        }
+	      }
+	    }
+	  } finally {
+	    closeC64Instance(c64);
+	  }
+	}
 
 When the duration between SID writes is greater than 0xffff, the 'getCommand'
 method will return SID_DELAY_COMMAND with cycles set to 0xffff. When the
@@ -251,7 +251,7 @@ getReleased
 ===========
 The 'getReleased' method returns the released info (year and publisher) of the
 SID file.
-
+  
 
 getNumberOfSongs
 ================
@@ -356,7 +356,7 @@ skipSilence
 ===========
 The 'skipSilence' method can be used to skip silence at the beginning of a SID
 tune. This feature is default turned off. You can enable this feature per C64
-instance. If enabled then the SID data will be analysed and checked when the
+instance. If enabled then the SID data will be analyzed and checked when the
 first audible note is written. All the data that is written to the SID is still
 returned, only the cycle data is modified so that the tune starts immediately.
 
@@ -386,7 +386,7 @@ pressButtons
 ============
 The 'pressButtons' method will virtually press space bar and all the joystick
 buttons for about 150 milliseconds and then release them. It can be used to skip
-intros or for playing all the music for a particular demo.
+intros or for playing all the musics for a particular demo.
 
 After the 'pressButtons' method is called, a NEXT_PART_COMMAND can be captured
 which will be generated when a program has processed the space bar or joystick
@@ -396,7 +396,7 @@ button press.
 enableFixedStartup
 ==================
 The 'enableFixedStartup' method will make sure the C64 is started exactly the
-same for every tune. This means that it will not have a random start-up time,
+same for every tune. This means that it will not have a random startup time,
 which is required for certain E-Loader tunes. It is by default turned off.
 
 This method should be called before the 'run' method or after the
@@ -435,12 +435,12 @@ The following bit values are specified for each memory byte:
   MEM_WRITE = $08;
   MEM_LOAD = $02;
   MEM_UNUSED = $00;
-
+  
 The passed pointer is the pointer to the buffer where the data of the memory
 usage should be written to. The passed size is the size of the buffer. For the
 full map, the size should be set to 65536 (64KB).
-
-
+  
+  
 getLoadAddress
 ==============
 The 'getLoadAddress' method will retrieve the load address of the SID tune.
@@ -499,7 +499,7 @@ it is set to false. This method has only impact on PSID tunes.
 getMemory
 =========
 The 'getMemory' method will retrieve the memory data from RAM.
-
+ 
 The passed pointer is the pointer to the buffer where the data of the memory
 should be written to. The passed size is the size of the buffer. For the full
 memory, the size should be set to 65536 (64KB).
