@@ -63,8 +63,13 @@ p: pause/resume playback
 Escape (ESC) key: exit program
 ```
 
-### ACID64Pro Library
-For documentation about the acid64pro.dll, see the [readme.txt](/library/readme.txt) file in the library folder.
+### Documentation
+For documentation about the acid64pro.dll library, see the [readme.txt](/library/readme.txt) file
+in the library folder.
+
+For documentation about the network SID device, see the
+[netsiddev.adoc](https://sourceforge.net/p/jsidplay2/code/HEAD/tree/trunk/jsidplay2/src/main/asciidoc/netsiddev.adoc?format=raw) file
+from the JSidplay2 project.
 
 ### Licensing
 The source code is licensed under the GPL v3 license. License is available [here](/LICENSE).
