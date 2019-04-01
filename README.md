@@ -68,8 +68,9 @@ For documentation about the acid64pro.dll library, see the [readme.txt](/library
 in the library folder.
 
 For documentation about the network SID device, see the
-[netsiddev.adoc](https://sourceforge.net/p/jsidplay2/code/HEAD/tree/trunk/jsidplay2/src/main/asciidoc/netsiddev.adoc?format=raw) file
-from the JSidplay2 project.
+[Network SID Device V4](/docs/network_sid_device_v4.html) specification,
+converted from the
+[JSidplay2](https://sourceforge.net/p/jsidplay2/code/HEAD/tree/trunk/jsidplay2/src/main/asciidoc/netsiddev.adoc) project.
 
 ### Licensing
 The source code is licensed under the GPL v3 license. License is available [here](/LICENSE).

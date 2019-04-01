@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <!--[if IE]><meta http-equiv="X-UA-Compatible" content="IE=edge"><![endif]-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="Asciidoctor 1.5.4">
+  <title>Network SID Device</title>
+  <link rel="stylesheet" href="https://asciidoclive.com/assets/asciidoctor.js/css/asciidoctor.css">
+</head>
+
+<body class="article">
+  <div id="header">
+  </div>
+  <div id="content">
+    <div class="sect1">
+      <h2 id="__a_id_netsiddev_a_network_sid_device">
+        <a id="NetSIDDev"></a>Network SID Device</h2>
+      <div class="sectionbody">
+        <div class="sect2">
+          <h3 id="_implementation_of_a_network_sid_device_protocol">Implementation of a network SID device protocol</h3>
+          <div class="paragraph">
+            <p>You can implement your own SID device (hardware or software based) and
+              control it using JSIDPlay2. The network SID device protocol has been
+              defined to communicate with these implementations.</p>
+          </div>
+          <div class="paragraph">
+            <p>This protocol is called: Network SID device protocol. Communication is
+              done via socket connection and port 6581 by default.</p>
+          </div>
+          <div class="paragraph">
+            <p>JSIDPlay2 can act as a client or as a server:</p>
+          </div>
+          <div class="olist arabic">
+            <ol class="arabic">
+              <li>
+                <p>JSIDPlay2 is able to use these SID implementations as a client to
+                  playback SID on these devices.</p>
+              </li>
+              <li>
+                <p>JSIDPlay2 also provides such a device (Network SID Device) implementing
+                  the network SID device protocol to be used with other software
+                  (e.g. <a href="https://www.acid64.com/">ACID64</a>)</p>
+              </li>
+            </ol>
+          </div>
+          <div class="sect3">
+            <h4 id="_general_overview">General Overview</h4>
+            <div class="paragraph">
+              <p>Since version 2, the protocol is structured as a request-response protocol:</p>
+            </div>
+            <div class="ulist">
+              <ul>
+                <li>
+                  <p>Requests are variable length, with minimum packet size 4 bytes.
+                    There are 3 fields and an amorphous data blob:</p>
+                  <div class="ulist">
+                    <ul>
+                      <li>
+                        <p>8-bit unsigned as command.</p>
+                      </li>
+                      <li>
+                        <p>8-bit unsigned as SID number.</p>
+                      </li>
+                      <li>
+                        <p>16-bit unsigned as length of data attached to header in bytes.</p>
+                      </li>
+                      <li>
+                        <p>Data (if any)</p>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+                <li>
+                  <p>All commands are ACKed with a response packet that takes one of
+                    the following forms:</p>
+                  <div class="ulist">
+                    <ul>
+                      <li>
+                        <p>OK means that the commands were accepted by server and can
+                          be discarded by client. No data will be appended to response.</p>
+                      </li>
+                      <li>
+                        <p>BUSY means that no part of the current command was accepted
+                          due to filled queue condition, and that client should wait
+                          and retry it later. 1 millisecond could be a suitable delay
+                          before retry. Queue length is limited both by number of
+                          events and maximum time drift between playback clock and
+                          client clock. No data will be attended to response.</p>
+                      </li>
+                      <li>
+                        <p>READ: successful read operation, one byte value follows that
+                          is the value read from SID.</p>
+                      </li>
+                      <li>
+                        <p>VERSION: response to VERSION operation. Version number will
+                          be appended to response.</p>
+                      </li>
+                      <li>
+                        <p>COUNT: number of SIDs supported by network device.</p>
+                      </li>
+                      <li>
+                        <p>INFO: info packet, which contains model code and zero-padded
+                          20-byte UTF-8 encoded string representing model name.</p>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+                <li>
+                  <p>Maximum packet length is 64k + header length. It is suggested that
+                    only short packets are transmitted, in the order of 1k and containing
+                    no more than about 1 ms worth of events. Otherwise the client-server
+                    desync brings jitter that may have unpleasant consequences. At
+                    the limit it&#8217;s possible to simply send a fixed header that
+                    describes a single write with each packet, but this is probably
+                    measurably less efficient.</p>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div class="sect3">
+            <h4 id="_protocol_version_information">Protocol version information</h4>
+            <div class="ulist">
+              <ul>
+                <li>
+                  <p>Version 1</p>
+                  <div class="ulist">
+                    <ul>
+                      <li>
+                        <p>contains commands FLUSH, TRY_SET_SID_COUNT, MUTE, TRY_RESET,
+                          TRY_DELAY, TRY_WRITE, TRY_READ and GET_VERSION. There are
+                          8 SID devices where bit 0 sets 6581/8580, bit 1 sets PAL/NTSC
+                          and bit 2 sets RESAMPLE/DECIMATE mode of operation.</p>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+                <li>
+                  <p>Version 2</p>
+                  <div class="ulist">
+                    <ul>
+                      <li>
+                        <p>contains commands TRY_SET_SAMPLING, TRY_SET_CLOCKING, GET_CONFIG_COUNT,
+                          GET_CONFIG_INFO, SET_SID_POSITION, SET_SID_LEVEL, TRY_SET_SID_MODEL,
+                          SET_DELAY. There are multiple SID devices of type 6581
+                          and 8580. The commands TRY_SET_SAMPLING and TRY_SET_CLOCKING
+                          can be used to set particular SID kind.</p>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+                <li>
+                  <p>Version 3</p>
+                  <div class="ulist">
+                    <ul>
+                      <li>
+                        <p>supports muting of voice number 4 (digi channel).</p>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+                <li>
+                  <p>Version 4</p>
+                  <div class="ulist">
+                    <ul>
+                      <li>
+                        <p>contains commands SET_FADE_IN, SET_FADE_OUT and SET_PSID_HEADER</p>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div class="sect3">
+            <h4 id="_command_overview">Command Overview</h4>
+            <div class="ulist">
+              <ul>
+                <li>
+                  <p>Structure of data is specific to command. Some commands require
+                    data, others will not use data even if such was provided. Some
+                    commands require specific lengths for the data packets. If data
+                    length is not correct, results are undefined. Known commands
+                    are identified by small integers, starting from 0:</p>
+                  <div class="ulist">
+                    <ul>
+                      <li>
+                        <p>FLUSH (0): destroy queued data on all SIDs, and cease audio
+                          production.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number is ignored.</p>
+                            </li>
+                            <li>
+                              <p>data packet must be 0 length.</p>
+                            </li>
+                            <li>
+                              <p>should probably be followed by RESET (SID is in unpredictable
+                                state).</p>
+                            </li>
+                            <li>
+                              <p>always returns OK</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>TRY_SET_SID_COUNT (1): set number of SID devices available
+                          for writing</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number equals the count of SIDs wanted.</p>
+                            </li>
+                            <li>
+                              <p>data packet must be 0 length.</p>
+                            </li>
+                            <li>
+                              <p>returns BUSY until audio quiescent, otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>MUTE (2): mute/unmute a voice on specified SID</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet must contain two 8-bit unsigned bytes:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>the voice number from 0 to 3 (voice number 3
+                                      (digi) is supported since version 3. For version
+                                      2 of the protocol only voice numbers 0 to 2
+                                      are supported.
+                                    </p>
+                                  </li>
+                                  <li>
+                                    <p>0 or 1 to disable/enable voice</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>this command bypasses buffer and takes immediate effect.</p>
+                            </li>
+                            <li>
+                              <p>always returns OK</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>TRY_RESET (3): reset all SIDs, setting volume to provided
+                          value.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet must be a 8-bit unsigned value which is
+                                written to volume register.
+                              </p>
+                            </li>
+                            <li>
+                              <p>returns BUSY until audio quiescent, otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>TRY_DELAY (4): inform emulation that no events have occurred
+                          for a given count of cycles</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet must be 16-bit unsigned value interpreted
+                                as delay in C64 clocks. 0 is not allowed.</p>
+                            </li>
+                            <li>
+                              <p>allows audio generation in absence of other activity.</p>
+                            </li>
+                            <li>
+                              <p>returns BUSY if there is already enough data for playback,
+                                otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>TRY_WRITE (5): try to queue a number of write-to-sid events.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet must be 4*N bytes long, repeating this
+                                structure:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>16-bit unsigned value interpreted as delay before
+                                      the write in C64 clocks.
+                                    </p>
+                                  </li>
+                                  <li>
+                                    <p>8-bit unsigned SID register number from 0x00
+                                      to 0x1f.</p>
+                                  </li>
+                                  <li>
+                                    <p>8-bit unsigned data value to write</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>returns BUSY if there is already enough data for playback,
+                                otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>TRY_READ (6): reads SID chip register.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet must be a 4n+3 bytes long, where n &gt;=
+                                0. The protocol used for the first n packets is the
+                                same as the TRY_WRITE protocol, returning potentially
+                                BUSY if the delay implied by the READ, or the WRITEs
+                                can not yet be buffered.</p>
+                            </li>
+                            <li>
+                              <p>Read packet structure trails the write packet structure:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>16-bit unsigned value interpreted as delay before
+                                      the read in C64 clocks.</p>
+                                  </li>
+                                  <li>
+                                    <p>8-bit unsigned SID register number from 0x00
+                                      to 0x1f.</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>returns BUSY if there is already enough data for playback,
+                                otherwise READ and a data byte, which is the read
+                                value from SID.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>GET_VERSION (7): returns the version of the SID Network protocol.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number is ignored.</p>
+                            </li>
+                            <li>
+                              <p>data packet must be 0 length.</p>
+                            </li>
+                            <li>
+                              <p>returns 2 bytes: VERSION and a data byte, which is
+                                the version of the SID Network protocol.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>TRY_SET_SAMPLING (8): set the resampling method for all SID
+                          devices.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number is ignored.</p>
+                            </li>
+                            <li>
+                              <p>data packet is 1 byte long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>0 for pure decimator (low quality)</p>
+                                  </li>
+                                  <li>
+                                    <p>1 for low-pass filtered decimator (high quality).</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>returns BUSY until audio quiescent, otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_CLOCKING (9): set the clock source speed for all SID
+                          devices.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number is ignored.</p>
+                            </li>
+                            <li>
+                              <p>data packet is 1 byte long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>0 for PAL</p>
+                                  </li>
+                                  <li>
+                                    <p>1 for NTSC</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>returns BUSY until audio quiescent, otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>GET_CONFIG_COUNT (10): Query number of SID configurations
+                          supported by server.
+                        </p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number is ignored.</p>
+                            </li>
+                            <li>
+                              <p>data packet is ignored and should be 0 length.</p>
+                            </li>
+                            <li>
+                              <p>always returns COUNT and a 8-bit unsigned value that
+                                is 1 larger than the maximum valid configuration.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>GET_CONFIG_INFO (11): query the name and model of the SID
+                          configuration.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet is ignored and should be 0 length.</p>
+                            </li>
+                            <li>
+                              <p>returns INFO and 8-bit unsigned-value and a string
+                                in ISO-8859-1 encoding with a maximum of 255 characters
+                                excluding a null terminated byte</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>INFO code</p>
+                                  </li>
+                                  <li>
+                                    <p>Model: 0 = 6581, 1 = 8580</p>
+                                  </li>
+                                  <li>
+                                    <p>Model name (max. 255 chars + 1 null terminated
+                                      byte)</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_SID_POSITION (12): set sid position on the audio mix</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet is 1 byte long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>-100 to 0: audio is panned to left</p>
+                                  </li>
+                                  <li>
+                                    <p>0 to 100: audio is panned to right</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>always returns OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_SID_LEVEL (13): set SID level adjustment in dB</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet is 1 byte long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>8-bit signed dB adjustment in cB (centibels),
+                                      0 means no adjustment</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>always returns OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_SID_MODEL (14):</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet is 1 byte long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>8-bit unsigned value between 0 &lt;= value &lt;=
+                                      max_config-1</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>always returns OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_DELAY (15): set SID output delay in ms</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet is 1 byte long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>8-bit unsigned ms delay, 0 means no delay</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>always returns OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_FADE_IN (16): set fade-in time in seconds.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number is ignored.</p>
+                            </li>
+                            <li>
+                              <p>data packet is 4 bytes long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>int representation of the specified floating-point
+                                      value according to the IEEE 754 floating-point
+                                      "single format" bit layout). Fade-in time in
+                                      seconds.</p>
+                                  </li>
+                                  <li>
+                                    <p>Note: Since only the client knows the song length,
+                                      you must send this command, when the fade-in
+                                      time is reached (at the start of the tune).</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>returns BUSY until audio quiescent, otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_FADE_OUT (17): set fade-out time in seconds.</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>sid number is ignored.</p>
+                            </li>
+                            <li>
+                              <p>data packet is 4 bytes long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>int representation of the specified floating-point
+                                      value according to the IEEE 754 floating-point
+                                      "single format" bit layout). Fade-out time
+                                      in seconds.</p>
+                                  </li>
+                                  <li>
+                                    <p>Note: Since only the client knows the song length,
+                                      you must send this command, when the fade-out
+                                      time is reached (near the end of the tune).</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>returns BUSY until audio quiescent, otherwise OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                      <li>
+                        <p>SET_PSID_HEADER (18): set PSID header bytes</p>
+                        <div class="ulist">
+                          <ul>
+                            <li>
+                              <p>data packet is 124 byte long and contains:</p>
+                              <div class="ulist">
+                                <ul>
+                                  <li>
+                                    <p>PSID header bytes. This optional command can
+                                      be used to show information of what is currently
+                                      being played.</p>
+                                  </li>
+                                </ul>
+                              </div>
+                            </li>
+                            <li>
+                              <p>always returns OK.</p>
+                            </li>
+                          </ul>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="sect2">
+          <h3 id="_make_use_of_devices_implementing_the_network_sid_device_protocol_jsidplay2_as_a_client">Make use of devices implementing the network SID device protocol (JSIDPlay2
+            as a Client)</h3>
+          <div class="paragraph">
+            <p>To use these SID implementations as a client for playback, you must choose
+              NetSID as the emulation type in the user interface and provide a hostname
+              and port for that. Default is to connect to 127.0.0.1:6581.</p>
+          </div>
+          <div class="paragraph">
+            <p>E.g you can use ConsolePlayer to use these SID implementations for playback.</p>
+          </div>
+          <div class="listingblock">
+            <div class="content">
+              <pre class="highlight"><code>java -jar {artifactId}_console-{version}.jar \
+	--engine NETSID \
+	--NetSIDDevHost 127.0.0.1 \
+	--NetSIDDevPort 6581 <b class="conum">(1)</b></code></pre>
+            </div>
+          </div>
+          <div class="colist arabic">
+            <ol>
+              <li>
+                <p>Start ConsolePlayer and use Network SID Device for sound output</p>
+              </li>
+            </ol>
+          </div>
+        </div>
+        <div class="sect2">
+          <h3 id="_launch_network_sid_device_jsidplay2_as_a_server">Launch Network SID Device (JSIDPlay2 as a Server)</h3>
+          <div class="paragraph">
+            <p>It is possible to have JSIDPlay2 take over the duty of the SID playback
+              for a C64 emulator/player. The Network SID Device tries to open port
+              6581 where it will listen to connections that describe SID activity.</p>
+          </div>
+          <div class="paragraph">
+            <p>Note: Whereas <strong>Windows</strong> users get an executable (.EXE)
+              to launch&#8230;&#8203;</p>
+          </div>
+          <div class="listingblock">
+            <div class="content">
+              <pre class="highlight"><code>jsiddevice-{version}.exe <b class="conum">(1)</b></code></pre>
+            </div>
+          </div>
+          <div class="colist arabic">
+            <ol>
+              <li>
+                <p>Launch User interface version (console version is not available as
+                  an executable, see below)</p>
+              </li>
+            </ol>
+          </div>
+          <div class="paragraph">
+            <p>&#8230;&#8203;other operating systems launch Network SID Device using
+              the following command:</p>
+          </div>
+          <div class="listingblock">
+            <div class="content">
+              <pre class="highlight"><code>java -jar jsiddevice-{version}.jar <b class="conum">(1)</b>
+java -classpath jsiddevice-{version}.jar server.netsiddev.NetworkSIDDevice <b class="conum">(2)</b></code></pre>
+            </div>
+          </div>
+          <div class="colist arabic">
+            <ol>
+              <li>
+                <p>Launch User interface version</p>
+              </li>
+              <li>
+                <p>Launch Console version</p>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
