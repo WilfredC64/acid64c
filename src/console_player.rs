@@ -7,11 +7,10 @@ use crate::Player;
 use self::clock::Clock;
 
 use crossterm_screen::Screen;
-use crossterm_input::{TerminalInput, AsyncReader};
+use crossterm_input::{TerminalInput, AsyncReader, InputEvent, KeyEvent};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use std::io::{Read, Bytes};
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
 use std::path::Path;
@@ -19,7 +18,7 @@ use crate::player::{PlayerCommand};
 use std::sync::mpsc::SyncSender;
 
 const LOOP_RATE_IN_MS: u64 = 200;
-const ESC_KEY: u8 = 27;
+const ESC_KEY: char = '\x1b';
 
 pub struct ConsolePlayer {
     player: Arc<Mutex<Player>>,
@@ -57,23 +56,21 @@ impl ConsolePlayer {
 
         self.paused = false;
         loop {
-            let key = stdin.next();
-            if let Some(Ok(_)) = key {
-                let key = key.unwrap().unwrap();
+            if let Some(key) = self.get_key(stdin.next()) {
                 match key {
-                    b'p' => {
+                    'p' => {
                         self.pause_or_resume_player();
                         clock.pause(self.paused);
                     },
-                    b'0' ... b'9' | b'+' | b'=' | b'-' | b'_' => {
+                    '0' ... '9' | '+' | '=' | '-' | '_' => {
                         let mut song_number = Self::convert_num_key_to_number(key);
                         let invalid_song_nr = song_number != -1 && number_of_tunes - 1 < song_number;
 
                         if invalid_song_nr == false || song_number == -1 {
                             self.stop_player(player_thread);
                             song_number = match key {
-                                b'+' | b'=' => self.player.lock().unwrap().get_next_song(),
-                                b'-' | b'_' => self.player.lock().unwrap().get_prev_song(),
+                                '+' | '=' => self.player.lock().unwrap().get_next_song(),
+                                '-' | '_' => self.player.lock().unwrap().get_prev_song(),
                                 _ => song_number
                             };
 
@@ -96,10 +93,23 @@ impl ConsolePlayer {
         Ok(())
     }
 
-    fn convert_num_key_to_number(key: u8) -> i32 {
+    fn get_key(&mut self, input_event: Option<InputEvent>) -> Option<char> {
+        if let Some(input_event) = input_event {
+            if let InputEvent::Keyboard(key_event) = input_event {
+                match key_event {
+                    KeyEvent::Char(c) => return Some(c),
+                    KeyEvent::Esc => return Some(ESC_KEY),
+                    _ => ()
+                }
+            }
+        }
+        None
+    }
+
+    fn convert_num_key_to_number(key: char) -> i32 {
         match key {
-            b'1'...b'9' => (key - b'0' - 1) as i32,
-            b'0' => 9,
+            '1' ... '9' => (key as u8 - b'0' - 1) as i32,
+            '0' => 9,
             _ => -1
         }
     }
@@ -150,10 +160,10 @@ impl ConsolePlayer {
         Clock::convert_seconds_to_time_string(song_length_in_seconds as u32, false)
     }
 
-    fn get_input_reader() -> Bytes<AsyncReader> {
+    fn get_input_reader() -> AsyncReader {
         let screen = Screen::new(true);
         let input = TerminalInput::from_output(&screen.stdout);
-        input.read_async().bytes()
+        input.read_async()
     }
 
     fn setup_and_display_clock(&mut self) -> Clock {
