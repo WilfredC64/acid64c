@@ -4,7 +4,7 @@
 mod acid64_library;
 mod network_sid_device;
 
-use crate::utils;
+use crate::utils::{hvsc, network};
 
 use self::acid64_library::Acid64Library;
 use self::network_sid_device::{NetworkSidDevice, SidClock, SamplingMethod};
@@ -12,7 +12,6 @@ use self::network_sid_device::{NetworkSidDevice, SidClock, SamplingMethod};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{thread, time};
-
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
@@ -280,7 +279,7 @@ impl Player {
         let mut hvsc_root = self.get_hvsc_root_location(hvsc_location)?;
 
         if hvsc_root.is_none() {
-            hvsc_root = utils::hvsc::get_hvsc_root(self.filename.as_ref());
+            hvsc_root = hvsc::get_hvsc_root(self.filename.as_ref());
         }
 
         if hvsc_root.is_some() {
@@ -297,7 +296,7 @@ impl Player {
         if self.network_sid_device.is_none() {
             let host_name = self.host_name.to_owned();
 
-            let is_local_ip = utils::network::is_local_ip_address(host_name.to_owned());
+            let is_local_ip = network::is_local_ip_address(host_name.to_owned());
 
             if !is_local_ip {
                 return Err(format!("{} is not in the local network or invalid.", host_name));
@@ -373,7 +372,7 @@ impl Player {
 
     fn get_hvsc_root_location(&mut self, hvsc_location: Option<String>) -> Result<Option<String>, String> {
         if hvsc_location.is_some() {
-            let hvsc_root = utils::hvsc::get_hvsc_root(hvsc_location.as_ref().unwrap());
+            let hvsc_root = hvsc::get_hvsc_root(hvsc_location.as_ref().unwrap());
 
             if hvsc_root.is_none() {
                 return Err("Specified HVSC location is not valid.".to_string());

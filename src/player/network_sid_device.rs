@@ -1,11 +1,11 @@
 // Copyright (C) 2019 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
+use std::cmp::{min, max};
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Arc, str, thread, time};
-use std::cmp::{min, max};
 
 const BUFFER_SIZE: usize = 1024;            // 1 KB maximum to avoid network overhead
 const BUFFER_SINGLE_WRITE_SIZE: usize = 4;  // cycles 2 bytes, register 1 byte and data 1 byte

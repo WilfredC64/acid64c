@@ -3,22 +3,17 @@
 
 mod clock;
 
-use crate::Player;
+use crate::player::{Player, PlayerCommand};
+use crate::utils::keyboard;
 use self::clock::Clock;
 
-use crossterm_screen::Screen;
-use crossterm_input::{TerminalInput, AsyncReader, InputEvent, KeyEvent};
-
-use std::sync::atomic::{AtomicBool, Ordering};
-
-use std::sync::{Arc, Mutex};
-use std::{thread, time};
 use std::path::Path;
-use crate::player::{PlayerCommand};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::SyncSender;
+use std::{thread, time};
 
 const LOOP_RATE_IN_MS: u64 = 200;
-const ESC_KEY: char = '\x1b';
 
 pub struct ConsolePlayer {
     player: Arc<Mutex<Player>>,
@@ -49,21 +44,21 @@ impl ConsolePlayer {
         let mut clock = self.setup_and_display_clock();
         clock.start();
 
-        let mut stdin = Self::get_input_reader();
+        let mut stdin = keyboard::get_input_reader();
 
         let number_of_tunes = self.player.lock().unwrap().get_number_of_songs();
         let mut player_thread = self.start_player();
 
         self.paused = false;
         loop {
-            if let Some(key) = Self::get_char_from_input(stdin.next()) {
+            if let Some(key) = keyboard::get_char_from_input(stdin.next()) {
                 match key {
                     'p' => {
                         self.pause_or_resume_player();
                         clock.pause(self.paused);
                     },
                     '0' ... '9' | '+' | '=' | '-' | '_' => {
-                        let mut song_number = Self::convert_num_key_to_number(key);
+                        let mut song_number = keyboard::convert_num_key_to_number(key);
                         let invalid_song_nr = song_number != -1 && number_of_tunes - 1 < song_number;
 
                         if invalid_song_nr == false || song_number == -1 {
@@ -79,7 +74,7 @@ impl ConsolePlayer {
                             player_thread = self.start_player();
                         }
                     },
-                    ESC_KEY => break,
+                    keyboard::ESC_KEY => break,
                     _ => ()
                 };
             }
@@ -93,33 +88,6 @@ impl ConsolePlayer {
         Ok(())
     }
 
-    fn get_input_reader() -> AsyncReader {
-        let screen = Screen::new(true);
-        let input = TerminalInput::from_output(&screen.stdout);
-        input.read_async()
-    }
-
-    fn get_char_from_input(input_event: Option<InputEvent>) -> Option<char> {
-        if let Some(input_event) = input_event {
-            if let InputEvent::Keyboard(key_event) = input_event {
-                match key_event {
-                    KeyEvent::Char(c) => return Some(c),
-                    KeyEvent::Esc => return Some(ESC_KEY),
-                    _ => ()
-                }
-            }
-        }
-        None
-    }
-
-    fn convert_num_key_to_number(key: char) -> i32 {
-        match key {
-            '1' ... '9' => (key as u8 - b'0' - 1) as i32,
-            '0' => 9,
-            _ => -1
-        }
-    }
-
     fn pause_or_resume_player(&mut self) -> () {
         if self.paused {
             self.send_command(PlayerCommand::Play);
@@ -128,15 +96,6 @@ impl ConsolePlayer {
         }
 
         self.paused = !self.paused;
-    }
-
-    fn refresh_info(&mut self, clock: &mut Clock) {
-        clock.stop();
-        self.print_info();
-        let song_length_in_milli = self.player.lock().unwrap().get_song_length();
-        let clock_display = Self::get_clock_display(song_length_in_milli);
-        print!("{}", clock_display);
-        clock.start();
     }
 
     #[inline]
@@ -154,6 +113,15 @@ impl ConsolePlayer {
             player_clone.lock().unwrap().play();
         });
         player_thread
+    }
+
+    fn refresh_info(&mut self, clock: &mut Clock) {
+        clock.stop();
+        self.print_info();
+        let song_length_in_milli = self.player.lock().unwrap().get_song_length();
+        let clock_display = Self::get_clock_display(song_length_in_milli);
+        print!("{}", clock_display);
+        clock.start();
     }
 
     #[inline]
