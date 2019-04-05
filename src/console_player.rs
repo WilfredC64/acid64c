@@ -56,7 +56,7 @@ impl ConsolePlayer {
 
         self.paused = false;
         loop {
-            if let Some(key) = self.get_key(stdin.next()) {
+            if let Some(key) = Self::get_char_from_input(stdin.next()) {
                 match key {
                     'p' => {
                         self.pause_or_resume_player();
@@ -93,7 +93,13 @@ impl ConsolePlayer {
         Ok(())
     }
 
-    fn get_key(&mut self, input_event: Option<InputEvent>) -> Option<char> {
+    fn get_input_reader() -> AsyncReader {
+        let screen = Screen::new(true);
+        let input = TerminalInput::from_output(&screen.stdout);
+        input.read_async()
+    }
+
+    fn get_char_from_input(input_event: Option<InputEvent>) -> Option<char> {
         if let Some(input_event) = input_event {
             if let InputEvent::Keyboard(key_event) = input_event {
                 match key_event {
@@ -158,12 +164,6 @@ impl ConsolePlayer {
     fn convert_song_length(song_length: i32) -> String {
         let song_length_in_seconds = (song_length + 500) / 1000;
         Clock::convert_seconds_to_time_string(song_length_in_seconds as u32, false)
-    }
-
-    fn get_input_reader() -> AsyncReader {
-        let screen = Screen::new(true);
-        let input = TerminalInput::from_output(&screen.stdout);
-        input.read_async()
     }
 
     fn setup_and_display_clock(&mut self) -> Clock {

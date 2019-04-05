@@ -11,13 +11,13 @@ build = "build.rs"
 
 [dependencies]
 libloading = "0.5"
-encoding = "0.2.33"
+encoding = "0.2"
 crossterm_cursor = "0.1"
 crossterm_input = "0.2"
 crossterm_screen = "0.1"
-timer = "0.2.0"
+timer = "0.2"
 chrono = "0.4"
-get_if_addrs = "0.5.3"
+get_if_addrs = "0.5"
 
 [profile.release]
 lto = true
