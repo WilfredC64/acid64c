@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::SyncSender;
 use std::{thread, time};
 
-const LOOP_RATE_IN_MS: u64 = 200;
+const LOOP_RATE_IN_MS: u64 = 100;
 
 pub struct ConsolePlayer {
     player: Arc<Mutex<Player>>,
@@ -39,12 +39,12 @@ impl ConsolePlayer {
     }
 
     pub fn play(&mut self) -> Result<(), String> {
+        let mut stdin = keyboard::get_input_reader()?;
+
         self.print_info();
 
         let mut clock = self.setup_and_display_clock();
         clock.start();
-
-        let mut stdin = keyboard::get_input_reader();
 
         let number_of_tunes = self.player.lock().unwrap().get_number_of_songs();
         let mut player_thread = self.start_player();

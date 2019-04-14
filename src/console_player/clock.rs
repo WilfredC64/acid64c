@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::Arc;
 
 pub struct Clock {
-    cursor: TerminalCursor<'static>,
+    cursor: TerminalCursor,
     seconds_counter: Arc<AtomicIsize>,
     timer: timer::Timer,
     previous_count: isize,
