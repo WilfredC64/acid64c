@@ -81,7 +81,7 @@ pub struct NetworkSidDevice {
 
 #[allow(dead_code)]
 impl NetworkSidDevice {
-    pub fn new(ip_address: String, port: String, aborted: Arc<AtomicBool>) -> NetworkSidDevice {
+    pub fn new(ip_address: &str, port: &str, aborted: Arc<AtomicBool>) -> NetworkSidDevice {
         let mut nsd_props = NetworkSidDevice {
             sid_device: TcpStream::connect([ip_address, port].join(":")).unwrap(),
             interface_version: 0,

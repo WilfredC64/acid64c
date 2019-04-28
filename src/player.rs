@@ -298,7 +298,7 @@ impl Player {
                 return Err(format!("{} is not in the local network or invalid.", self.host_name));
             }
 
-            self.network_sid_device = Some(NetworkSidDevice::new(self.host_name.to_owned(), self.port.to_owned(), Arc::clone(&self.aborted)));
+            self.network_sid_device = Some(NetworkSidDevice::new(&self.host_name, &self.port, Arc::clone(&self.aborted)));
         }
         Ok(())
     }
