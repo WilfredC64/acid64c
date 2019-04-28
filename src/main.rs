@@ -50,7 +50,7 @@ fn run() -> Result<(), String> {
     let mut song_number = -1;
     let filename = env::args().last().unwrap();
 
-    let mut player = Player::new(filename.to_string());
+    let mut player = Player::new(filename);
 
     for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with("-")) {
         match &argument[1..2] {

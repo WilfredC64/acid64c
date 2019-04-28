@@ -80,14 +80,14 @@ impl Drop for Player {
 }
 
 impl Player {
-    pub fn new(filename: String) -> Player {
+    pub fn new<S>(filename: S) -> Player where S: Into<String> {
         let (cmd_sender, cmd_receiver) = sync_channel(0);
 
         let mut player_properties = Player {
             acid64_lib: Acid64Library::new(),
             c64_instance: 0,
             network_sid_device: None,
-            filename,
+            filename: filename.into(),
             device_number: 0,
             song_number: 0,
             host_name: DEFAULT_HOST.to_string(),
@@ -294,15 +294,11 @@ impl Player {
 
     fn init_devices(&mut self) -> Result<(), String> {
         if self.network_sid_device.is_none() {
-            let host_name = self.host_name.to_owned();
-
-            let is_local_ip = network::is_local_ip_address(host_name.to_owned());
-
-            if !is_local_ip {
-                return Err(format!("{} is not in the local network or invalid.", host_name));
+            if !network::is_local_ip_address(&self.host_name) {
+                return Err(format!("{} is not in the local network or invalid.", self.host_name));
             }
 
-            self.network_sid_device = Some(NetworkSidDevice::new(host_name, self.port.to_owned(), Arc::clone(&self.aborted)));
+            self.network_sid_device = Some(NetworkSidDevice::new(self.host_name.to_owned(), self.port.to_owned(), Arc::clone(&self.aborted)));
         }
         Ok(())
     }

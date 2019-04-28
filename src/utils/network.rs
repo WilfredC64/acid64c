@@ -5,21 +5,20 @@ use get_if_addrs::IfAddr;
 use std::net::{Ipv4Addr, ToSocketAddrs};
 use std::str::FromStr;
 
-pub fn is_local_ip_address(host_name: String) -> bool {
-    let local_ip_address = resolve_local_ip(host_name);
-
-    if local_ip_address.is_some() {
-        is_ip_in_local_network(local_ip_address.unwrap())
+pub fn is_local_ip_address(host_name: &str) -> bool {
+    if let Some(local_ip_address) = resolve_local_ip(host_name) {        
+        is_ip_in_local_network(&local_ip_address)
     } else {
         return false
     }
 }
 
-fn is_ip_in_local_network(local_ip_address: String) -> bool {
+fn is_ip_in_local_network(local_ip_address: &str) -> bool {
     for if_addr in get_if_addrs::get_if_addrs().unwrap() {
         if let IfAddr::V4(ref ip_addr) = if_addr.addr {
-            let masked_local_ip = mask_ip_address(ip_addr.ip.to_string(), ip_addr.netmask.to_string());
-            let masked_host_ip = mask_ip_address(local_ip_address.clone(), ip_addr.netmask.to_string());
+            let ip_addr_netmask = ip_addr.netmask.to_string();
+            let masked_local_ip = mask_ip_address(&ip_addr.ip.to_string(), &ip_addr_netmask);
+            let masked_host_ip = mask_ip_address(local_ip_address, &ip_addr_netmask);
             if masked_host_ip == masked_local_ip {
                 return true;
             }
@@ -28,29 +27,28 @@ fn is_ip_in_local_network(local_ip_address: String) -> bool {
     false
 }
 
-fn resolve_local_ip(host_name: String) -> Option<String> {
-    let ip_addresses = (host_name.as_str(), 0).to_socket_addrs()
+fn resolve_local_ip(host_name: &str) -> Option<String> {
+    let ip_addresses = (host_name, 0).to_socket_addrs()
         .map(|iter| iter.filter(|socket_address| socket_address.is_ipv4())
             .map(|socket_address| socket_address.ip().to_string()).collect::<Vec<_>>());
 
     for ip_address in ip_addresses.unwrap() {
-        if is_local(ip_address.clone()) {
+        if is_local(&ip_address) {
             return Some(ip_address);
         }
     }
     None
 }
 
-fn is_local(host_name: String) -> bool {
-    let localhost = Ipv4Addr::from_str(host_name.as_str());
-    if localhost.is_ok() {
-        let localhost = localhost.unwrap();
-        return localhost.is_loopback() || localhost.is_private();
+fn is_local(host_name: &str) -> bool {
+    if let Ok(localhost) = Ipv4Addr::from_str(host_name) {
+        localhost.is_loopback() || localhost.is_private()
+    } else {
+        false
     }
-    false
 }
 
-fn mask_ip_address(ip_address: String, netmask: String) -> Result<String, String> {
+fn mask_ip_address(ip_address: &str, netmask: &str) -> Result<String, String> {
     let ip_address: Vec<&str> = ip_address.split(".").collect();
     let netmask: Vec<&str> = netmask.split(".").collect();
 

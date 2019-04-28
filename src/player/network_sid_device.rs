@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Arc, str, thread, time};
 
 const BUFFER_SIZE: usize = 1024;            // 1 KB maximum to avoid network overhead
+const RESPONSE_BUFFER_SIZE: usize = 260;
 const BUFFER_SINGLE_WRITE_SIZE: usize = 4;  // cycles 2 bytes, register 1 byte and data 1 byte
 const MAX_SID_WRITES: usize = BUFFER_SIZE - BUFFER_SINGLE_WRITE_SIZE;
 const WRITE_CYCLES_THRESHOLD: u32 = 63 * 312 * 5 / 2;
@@ -371,7 +372,7 @@ impl NetworkSidDevice {
 
     #[inline]
     fn read_data(&mut self) -> (CommandResponse, Vec<u8>) {
-        let mut output_buffer = [0 as u8; 260];
+        let mut output_buffer = [0 as u8; RESPONSE_BUFFER_SIZE];
         let result = self.sid_device.read(&mut output_buffer);
 
         match result {
@@ -391,7 +392,7 @@ impl NetworkSidDevice {
     }
 
     #[inline]
-    fn handle_response(&mut self, output_buffer: &mut [u8; 260], result_size: usize) -> (CommandResponse, Vec<u8>) {
+    fn handle_response(&mut self, output_buffer: &mut [u8; RESPONSE_BUFFER_SIZE], result_size: usize) -> (CommandResponse, Vec<u8>) {
         let response = output_buffer[0];
 
         if response == CommandResponse::Busy as u8 {
