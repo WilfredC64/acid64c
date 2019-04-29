@@ -7,10 +7,10 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Arc, str, thread, time};
 
-const BUFFER_SIZE: usize = 1024;            // 1 KB maximum to avoid network overhead
+const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
 const RESPONSE_BUFFER_SIZE: usize = 260;
 const BUFFER_SINGLE_WRITE_SIZE: usize = 4;  // cycles 2 bytes, register 1 byte and data 1 byte
-const MAX_SID_WRITES: usize = BUFFER_SIZE - BUFFER_SINGLE_WRITE_SIZE;
+const MAX_SID_WRITES: usize = WRITE_BUFFER_SIZE - BUFFER_SINGLE_WRITE_SIZE;
 const WRITE_CYCLES_THRESHOLD: u32 = 63 * 312 * 5 / 2;
 const CLIENT_WAIT_CYCLES_THRESHOLD: u32 = 4000;
 const MIN_CYCLES_FOR_DELAY: u32 = 63 * 312 * 50;
@@ -69,7 +69,8 @@ enum Command {
 pub struct NetworkSidDevice {
     sid_device: TcpStream,
     interface_version: i32,
-    write_buffer: [u8; BUFFER_SIZE],
+    write_buffer: [u8; WRITE_BUFFER_SIZE],
+    response_buffer: [u8; RESPONSE_BUFFER_SIZE],
     buffer_index: usize,
     buffer_cycles: u32,
     device_count: i32,
@@ -85,7 +86,8 @@ impl NetworkSidDevice {
         let mut nsd_props = NetworkSidDevice {
             sid_device: TcpStream::connect([ip_address, port].join(":")).unwrap(),
             interface_version: 0,
-            write_buffer: [0; BUFFER_SIZE],
+            write_buffer: [0; WRITE_BUFFER_SIZE],
+            response_buffer: [0; RESPONSE_BUFFER_SIZE],
             buffer_index: BUFFER_HEADER_SIZE,
             buffer_cycles: 0,
             device_count: 0,
@@ -372,8 +374,7 @@ impl NetworkSidDevice {
 
     #[inline]
     fn read_data(&mut self) -> (CommandResponse, Vec<u8>) {
-        let mut output_buffer = [0 as u8; RESPONSE_BUFFER_SIZE];
-        let result = self.sid_device.read(&mut output_buffer);
+        let result = self.sid_device.read(&mut self.response_buffer);
 
         match result {
             Ok(size) => {
@@ -388,12 +389,12 @@ impl NetworkSidDevice {
 
         let result_size = result.unwrap();
 
-        self.handle_response(&mut output_buffer, result_size)
+        self.handle_response(result_size)
     }
 
     #[inline]
-    fn handle_response(&mut self, output_buffer: &mut [u8; RESPONSE_BUFFER_SIZE], result_size: usize) -> (CommandResponse, Vec<u8>) {
-        let response = output_buffer[0];
+    fn handle_response(&mut self, result_size: usize) -> (CommandResponse, Vec<u8>) {
+        let response = self.response_buffer[0];
 
         if response == CommandResponse::Busy as u8 {
             return (CommandResponse::Busy, vec![0]);
@@ -408,11 +409,11 @@ impl NetworkSidDevice {
         if ((response == CommandResponse::Read as u8) ||
             (response == CommandResponse::Version as u8) ||
             (response == CommandResponse::Count as u8)) && result_size == 2 {
-            return (CommandResponse::Ok, vec![output_buffer[1]]);
+            return (CommandResponse::Ok, vec![self.response_buffer[1]]);
         }
 
         if response == CommandResponse::Info as u8 && result_size >= 2 {
-            return (CommandResponse::Ok, output_buffer[2..result_size].to_vec());
+            return (CommandResponse::Ok, self.response_buffer[2..result_size].to_vec());
         }
 
         (CommandResponse::Error, vec![0])
