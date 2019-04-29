@@ -50,7 +50,7 @@ fn run() -> Result<(), String> {
     let mut song_number = -1;
     let filename = env::args().last().unwrap();
 
-    let mut player = Player::new(filename);
+    let mut player = Player::new();
 
     for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with("-")) {
         match &argument[1..2] {
@@ -68,17 +68,16 @@ fn run() -> Result<(), String> {
     }
 
     player.set_device_number(device_number);
-    player.set_song_number(song_number);
-    player.init()?;
+    player.init_devices()?;
 
     if display_devices {
         print_device_names(player.get_device_names());
         return Ok(());
     }
 
-    if hvsc_location.is_some() {
-        player.setup_sldb_and_stil(hvsc_location, display_stil)?;
-    }
+    player.set_song_number(song_number);
+    player.load_file(filename)?;
+    player.setup_sldb_and_stil(hvsc_location, display_stil)?;
 
     let version = player.get_library_version();
     if version < 0x202 {

@@ -165,8 +165,10 @@ impl ConsolePlayer {
 
     fn print_filename(&mut self) {
         let filename = self.player.lock().unwrap().get_filename();
-        let path = Path::new(&filename);
-        println!("\nFile            : {}", path.file_name().unwrap().to_str().unwrap());
+        if let Some(filename) = filename {
+            let path = Path::new(&filename);
+            println!("\nFile            : {}", path.file_name().unwrap().to_str().unwrap());
+        }
     }
 
     fn print_sid_model(&mut self) {

@@ -59,7 +59,7 @@ pub struct Player {
     acid64_lib: Acid64Library,
     c64_instance: usize,
     network_sid_device: Option<NetworkSidDevice>,
-    filename: String,
+    filename: Option<String>,
     device_number: i32,
     song_number: i32,
     host_name: String,
@@ -80,14 +80,14 @@ impl Drop for Player {
 }
 
 impl Player {
-    pub fn new<S>(filename: S) -> Player where S: Into<String> {
+    pub fn new() -> Player {
         let (cmd_sender, cmd_receiver) = sync_channel(0);
 
         let mut player_properties = Player {
             acid64_lib: Acid64Library::new(),
             c64_instance: 0,
             network_sid_device: None,
-            filename: filename.into(),
+            filename: None,
             device_number: 0,
             song_number: 0,
             host_name: DEFAULT_HOST.to_string(),
@@ -109,12 +109,6 @@ impl Player {
         if self.c64_instance == 0 {
             panic!("C64 instance couldn't be created.");
         }
-    }
-
-    pub fn init(&mut self) -> Result<(), String> {
-        self.init_devices()?;
-        self.load_file(self.c64_instance, self.filename.to_owned())?;
-        Ok(())
     }
 
     pub fn get_channel_sender(&self) -> SyncSender<PlayerCommand> {
@@ -190,6 +184,7 @@ impl Player {
 
     fn process_player_commands(&mut self) {
         let recv_result = self.cmd_receiver.try_recv();
+        
         if recv_result.is_ok() {
             match recv_result.unwrap() {
                 PlayerCommand::Play => {
@@ -209,7 +204,6 @@ impl Player {
 
     pub fn get_device_names(&mut self) -> Vec<String> {
         let mut vec = Vec::new();
-
         let device_count = self.network_sid_device.as_mut().unwrap().get_device_count();
 
         for i in 0..device_count {
@@ -221,6 +215,7 @@ impl Player {
 
     pub fn get_cycles_per_second(&mut self) -> u32 {
         let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
+        
         match c64_model {
             2 => NTSC_CYCLES_PER_SECOND,
             _ => PAL_CYCLES_PER_SECOND
@@ -231,7 +226,7 @@ impl Player {
         self.acid64_lib.get_song_length(self.c64_instance)
     }
 
-    pub fn get_filename(&self) -> String {
+    pub fn get_filename(&self) -> Option<String> {
         self.filename.clone()
     }
 
@@ -278,8 +273,8 @@ impl Player {
     pub fn setup_sldb_and_stil(&mut self, hvsc_location: Option<String>, load_stil: bool) -> Result<(), String> {
         let mut hvsc_root = self.get_hvsc_root_location(hvsc_location)?;
 
-        if hvsc_root.is_none() {
-            hvsc_root = hvsc::get_hvsc_root(self.filename.as_ref());
+        if hvsc_root.is_none() && self.filename.is_some() {
+            hvsc_root = hvsc::get_hvsc_root(&self.filename.clone().unwrap());
         }
 
         if hvsc_root.is_some() {
@@ -292,7 +287,7 @@ impl Player {
         Ok(())
     }
 
-    fn init_devices(&mut self) -> Result<(), String> {
+    pub fn init_devices(&mut self) -> Result<(), String> {
         if self.network_sid_device.is_none() {
             if !network::is_local_ip_address(&self.host_name) {
                 return Err(format!("{} is not in the local network or invalid.", self.host_name));
@@ -301,6 +296,18 @@ impl Player {
             self.network_sid_device = Some(NetworkSidDevice::new(&self.host_name, &self.port, Arc::clone(&self.aborted)));
         }
         Ok(())
+    }
+
+    pub fn load_file<S>(&mut self, filename: S) -> Result<(), String> where S: Into<String> {
+        let filename = filename.into();
+        let is_loaded = self.acid64_lib.load_file(self.c64_instance, filename.to_owned());
+        
+        if !is_loaded {
+            Err(format!("File '{}' could not be loaded.", filename).to_string())
+        } else {
+            self.filename = Some(filename);
+            self.configure_sid_device(self.c64_instance)
+        }
     }
 
     #[inline]
@@ -368,7 +375,7 @@ impl Player {
 
     fn get_hvsc_root_location(&mut self, hvsc_location: Option<String>) -> Result<Option<String>, String> {
         if hvsc_location.is_some() {
-            let hvsc_root = hvsc::get_hvsc_root(hvsc_location.as_ref().unwrap());
+            let hvsc_root = hvsc::get_hvsc_root(&hvsc_location.unwrap());
 
             if hvsc_root.is_none() {
                 return Err("Specified HVSC location is not valid.".to_string());
@@ -380,26 +387,17 @@ impl Player {
 
     fn load_sldb(&mut self, hvsc_root: &str) -> Result<(), String> {
         let is_sldb = self.acid64_lib.check_sldb(hvsc_root.to_string());
+        
         if !is_sldb {
             return Err("Song length database is not found or not a database.".to_string());
         }
 
         let is_sldb_loaded = self.acid64_lib.load_sldb(hvsc_root.to_string());
+        
         if !is_sldb_loaded {
             return Err("Song length database could not be loaded.".to_string());
         }
         Ok(())
-    }
-
-    fn load_file(&mut self, c64_instance: usize, filename: String) -> Result<(), String> {
-        let is_loaded = self.acid64_lib.load_file(c64_instance, filename.to_owned());
-        if !is_loaded {
-            Err(format!("File '{}' could not be loaded.", filename).to_string())
-        } else {
-            self.filename = filename;
-            self.configure_sid_device(self.c64_instance)?;
-            Ok(())
-        }
     }
 
     fn configure_sid_device(&mut self, c64_instance: usize) -> Result<(), String> {
@@ -421,6 +419,7 @@ impl Player {
 
     pub fn get_next_song(&mut self) -> i32 {
         let number_of_songs = self.get_number_of_songs();
+        
         if self.song_number == number_of_songs - 1 {
             0
         } else {
@@ -444,6 +443,7 @@ impl Player {
         };
 
         let number_of_songs = self.acid64_lib.get_number_of_songs(self.c64_instance);
+        
         if song_number < 0 || song_number >= number_of_songs {
             return Err(format!("Song number {} doesn't exist.", song_number).to_string());
         }
@@ -479,6 +479,7 @@ impl Player {
 
     pub fn configure_sid_clock(&mut self, c64_instance: usize) {
         let c64_model = self.acid64_lib.get_c64_version(c64_instance);
+        
         match c64_model {
             2 => self.network_sid_device.as_mut().unwrap().set_sid_clock(SidClock::NTSC),
             _ => self.network_sid_device.as_mut().unwrap().set_sid_clock(SidClock::PAL)
