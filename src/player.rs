@@ -273,15 +273,17 @@ impl Player {
     pub fn setup_sldb_and_stil(&mut self, hvsc_location: Option<String>, load_stil: bool) -> Result<(), String> {
         let mut hvsc_root = self.get_hvsc_root_location(hvsc_location)?;
 
-        if hvsc_root.is_none() && self.filename.is_some() {
-            hvsc_root = hvsc::get_hvsc_root(&self.filename.clone().unwrap());
+        if hvsc_root.is_none() {
+            if let Some(filename) = &self.filename {
+                hvsc_root = hvsc::get_hvsc_root(filename);
+            }
         }
 
-        if hvsc_root.is_some() {
-            self.load_sldb(hvsc_root.as_ref().unwrap())?;
+        if let Some(hvsc_root) = hvsc_root {
+            self.load_sldb(&hvsc_root)?;
 
             if load_stil {
-                self.acid64_lib.load_stil(hvsc_root.as_ref().unwrap().to_owned());
+                self.acid64_lib.load_stil(hvsc_root.to_string());
             }
         }
         Ok(())
@@ -306,7 +308,7 @@ impl Player {
             Err(format!("File '{}' could not be loaded.", filename).to_string())
         } else {
             self.filename = Some(filename);
-            self.configure_sid_device(self.c64_instance)
+            self.configure_sid_device()
         }
     }
 
@@ -400,15 +402,15 @@ impl Player {
         Ok(())
     }
 
-    fn configure_sid_device(&mut self, c64_instance: usize) -> Result<(), String> {
-        self.acid64_lib.skip_silence(c64_instance, true);
-        self.acid64_lib.enable_volume_fix(c64_instance, true);
+    fn configure_sid_device(&mut self) -> Result<(), String> {
+        self.acid64_lib.skip_silence(self.c64_instance, true);
+        self.acid64_lib.enable_volume_fix(self.c64_instance, true);
 
-        let number_of_sids = self.acid64_lib.get_number_of_sids(c64_instance);
+        let number_of_sids = self.acid64_lib.get_number_of_sids(self.c64_instance);
         self.network_sid_device.as_mut().unwrap().set_sid_count(number_of_sids);
         self.network_sid_device.as_mut().unwrap().set_sid_position(50);
         self.configure_sid_model(number_of_sids)?;
-        self.configure_sid_clock(c64_instance);
+        self.configure_sid_clock();
         self.network_sid_device.as_mut().unwrap().set_sampling_method(SamplingMethod::BEST);
 
         self.set_song_to_play(self.song_number)?;
@@ -477,8 +479,8 @@ impl Player {
         Ok(())
     }
 
-    pub fn configure_sid_clock(&mut self, c64_instance: usize) {
-        let c64_model = self.acid64_lib.get_c64_version(c64_instance);
+    pub fn configure_sid_clock(&mut self) {
+        let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
         
         match c64_model {
             2 => self.network_sid_device.as_mut().unwrap().set_sid_clock(SidClock::NTSC),
