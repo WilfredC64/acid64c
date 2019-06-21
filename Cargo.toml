@@ -5,7 +5,7 @@ authors = ["Wilfred Bos"]
 description = "ACID64 Console SID player."
 readme = "README.md"
 edition = "2018"
-license = "GPLv3"
+license = "GPL-3.0-or-later"
 keywords = ["ACID64 console player", "sidplayer", "c64 music player", "SID 6581", "SID 8580"]
 build = "build.rs"
 

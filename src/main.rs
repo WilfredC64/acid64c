@@ -80,8 +80,8 @@ fn run() -> Result<(), String> {
     player.setup_sldb_and_stil(hvsc_location, display_stil)?;
 
     let version = player.get_library_version();
-    if version < 0x202 {
-        return Err("acid64pro.dll version 2.02 or higher required.".to_string());
+    if version < 0x203 {
+        return Err("acid64pro.dll version 2.03 or higher required.".to_string());
     }
 
     println!("ACID64 library version v{}.{:02}", version >> 8, version & 0xff);
