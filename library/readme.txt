@@ -68,7 +68,7 @@ The library supports the following methods (in Delphi code):
 getVersion
 ==========
 The 'getVersion' method returns the version number of the library in hex.
-E.g. 0x202 means version 2.02.
+E.g. 0x203 means version 2.03.
 
 
 createC64Instance
