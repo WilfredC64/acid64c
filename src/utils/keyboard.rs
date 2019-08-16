@@ -28,7 +28,7 @@ pub fn get_char_from_input(input_event: Option<InputEvent>) -> Option<char> {
 
 pub fn convert_num_key_to_number(key: char) -> i32 {
     match key {
-        '1' ... '9' => (key as u8 - b'0' - 1) as i32,
+        '1' ..= '9' => (key as u8 - b'0' - 1) as i32,
         '0' => 9,
         _ => -1
     }

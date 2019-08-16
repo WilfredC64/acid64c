@@ -57,7 +57,7 @@ impl ConsolePlayer {
                         self.pause_or_resume_player();
                         clock.pause(self.paused);
                     },
-                    '0' ... '9' | '+' | '=' | '-' | '_' => {
+                    '0' ..= '9' | '+' | '=' | '-' | '_' => {
                         let mut song_number = keyboard::convert_num_key_to_number(key);
                         let invalid_song_nr = song_number != -1 && number_of_tunes - 1 < song_number;
 
