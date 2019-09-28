@@ -71,7 +71,7 @@ impl Clock {
 
             let time = Clock::convert_seconds_to_time_string(seconds as u32, false);
             print!("{}", time);
-            let _ = self.cursor.reset_position();
+            let _ = self.cursor.restore_position();
         }
     }
 
