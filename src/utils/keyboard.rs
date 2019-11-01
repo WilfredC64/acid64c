@@ -1,7 +1,7 @@
 // Copyright (C) 2019 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use crossterm_input::{input, RawScreen, AsyncReader, InputEvent, KeyEvent};
+use crossterm::{input, RawScreen, AsyncReader, InputEvent, KeyEvent};
 
 pub const ESC_KEY: char = '\x1b';
 
