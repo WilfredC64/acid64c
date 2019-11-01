@@ -128,6 +128,8 @@ impl NetworkSidDevice {
             if device.len() > 0 {
                 return String::from_utf8(device).unwrap()
                     .replace("JSidDevice10_", "Default")
+                    .replace("(", " - ")
+                    .replace(")", "")
                     .replace("_", " - ")
                     .replace("6581", " 6581")
                     .replace("8580", " 8580")
