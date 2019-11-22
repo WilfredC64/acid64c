@@ -1,12 +1,13 @@
 // Copyright (C) 2019 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use crossterm::TerminalCursor;
+use std::io::{stdout, Write};
+use crossterm::cursor::{Hide, MoveLeft, MoveRight, SavePosition, RestorePosition, Show};
+use crossterm::execute;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::Arc;
 
 pub struct Clock {
-    cursor: TerminalCursor,
     seconds_counter: Arc<AtomicIsize>,
     timer: timer::Timer,
     previous_count: isize,
@@ -18,7 +19,6 @@ pub struct Clock {
 impl Clock {
     pub fn new() -> Clock {
         Clock {
-            cursor: TerminalCursor::new(),
             seconds_counter: Arc::new(AtomicIsize::new(0)),
             timer: timer::Timer::new(),
             previous_count: -1,
@@ -48,9 +48,7 @@ impl Clock {
         };
         self.guard = Some(guard);
 
-        let _ = self.cursor.hide();
-        let _ = self.cursor.move_left(self.clock_length);
-        let _ = self.cursor.save_position();
+        execute!(stdout(), Hide, MoveLeft(self.clock_length), SavePosition).unwrap();
     }
 
     pub fn pause(&mut self, pause: bool) {
@@ -59,8 +57,7 @@ impl Clock {
 
     pub fn stop(&mut self) {
         self.guard = None;
-        let _ = self.cursor.move_right(self.clock_length);
-        let _ = self.cursor.show();
+        execute!(stdout(), MoveRight(self.clock_length), Show).unwrap();
     }
 
     pub fn refresh_clock(&mut self) {
@@ -71,7 +68,7 @@ impl Clock {
 
             let time = Clock::convert_seconds_to_time_string(seconds as u32, false);
             print!("{}", time);
-            let _ = self.cursor.restore_position();
+            execute!(stdout(), RestorePosition).unwrap();
         }
     }
 

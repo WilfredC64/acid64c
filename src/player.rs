@@ -68,6 +68,7 @@ pub struct Player {
     cmd_sender: SyncSender<PlayerCommand>,
     cmd_receiver: Receiver<PlayerCommand>,
     paused: bool,
+    sid_written: bool,
     last_sid_write: [u8; 256]
 }
 
@@ -96,6 +97,7 @@ impl Player {
             cmd_sender,
             cmd_receiver,
             paused: false,
+            sid_written: false,
             last_sid_write: [0; 256]
         };
 
@@ -141,6 +143,7 @@ impl Player {
         let mut delay_cycles: u32 = 0;
         let mut idle_count: u32 = 0;
 
+        self.sid_written = false;
         self.paused = false;
         self.aborted.store(false, Ordering::SeqCst);
 
@@ -168,11 +171,13 @@ impl Player {
                     idle_count = 0;
                 },
                 SidCommand::Idle => {
-                    idle_count += cycles_per_second / 1000;
+                    if self.sid_written {
+                        idle_count += cycles_per_second / 1000;
 
-                    if idle_count >= cycles_per_second {
-                        self.network_sid_device.as_mut().unwrap().dummy_write(0, cycles_per_second);
-                        idle_count -= cycles_per_second
+                        if idle_count >= cycles_per_second {
+                            self.network_sid_device.as_mut().unwrap().dummy_write(0, cycles_per_second);
+                            idle_count -= cycles_per_second
+                        }
                     }
                 },
                 _ => (),
