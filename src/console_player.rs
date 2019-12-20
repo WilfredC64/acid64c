@@ -9,9 +9,9 @@ use self::clock::Clock;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::SyncSender;
-use std::{thread, time};
+use std::sync::{Arc, Mutex};
+use std::{thread, time::Duration};
 
 const LOOP_RATE_IN_MS: u64 = 100;
 
@@ -39,8 +39,6 @@ impl ConsolePlayer {
     }
 
     pub fn play(&mut self) -> Result<(), String> {
-        let mut stdin = keyboard::get_input_reader()?;
-
         self.print_info();
 
         let mut clock = self.setup_and_display_clock();
@@ -51,7 +49,7 @@ impl ConsolePlayer {
 
         self.paused = false;
         loop {
-            if let Some(key) = keyboard::get_char_from_input(stdin.next()) {
+            if let Some(key) = keyboard::get_char_from_input() {
                 match key {
                     'p' => {
                         self.pause_or_resume_player();
@@ -80,7 +78,7 @@ impl ConsolePlayer {
             }
 
             clock.refresh_clock();
-            thread::sleep(time::Duration::from_millis(LOOP_RATE_IN_MS));
+            thread::sleep(Duration::from_millis(LOOP_RATE_IN_MS));
         }
 
         clock.stop();
