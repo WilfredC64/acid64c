@@ -23,11 +23,12 @@ pub fn convert_num_key_to_number(key: char) -> i32 {
 }
 
 fn read_char() -> Result<Option<char>, ()> {
-    let event = read().unwrap();
-    match event {
-        Event::Key(KeyEvent { code: KeyCode::Char(c), .. }) => return Ok(Some(c)),
-        Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => return Ok(Some(ESC_KEY)),
-        _ => ()
+    if let Event::Key(KeyEvent{ code, .. }) = read().unwrap() {
+        match code {
+            KeyCode::Char(c) => return Ok(Some(c)),
+            KeyCode::Esc => return Ok(Some(ESC_KEY)),
+            _ => ()
+        }
     }
-    return Ok(None)
+    Ok(None)
 }
