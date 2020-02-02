@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Wilfred Bos
+// Copyright (C) 2019 - 2020 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use encoding::{Encoding, DecoderTrap, EncoderTrap};
@@ -292,6 +292,36 @@ impl Acid64Library {
     pub fn get_number_of_sids(&self, c64_instance: usize) -> i32 {
         unsafe {
             (self.a64lib.get(b"getNumberOfSids").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+        }
+    }
+
+    pub fn start_seek(&self, c64_instance: usize, time: u32) {
+        unsafe {
+            (self.a64lib.get(b"startSeek").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, u32)>)(c64_instance, time);
+        }
+    }
+
+    pub fn stop_seek(&self, c64_instance: usize) {
+        unsafe {
+            (self.a64lib.get(b"stopSeek").unwrap() as Symbol<unsafe extern "stdcall" fn(usize)>)(c64_instance);
+        }
+    }
+
+    pub fn get_cpu_load(&self, c64_instance: usize) -> i32 {
+        unsafe {
+            (self.a64lib.get(b"getCpuLoad").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+        }
+    }
+
+    pub fn get_speed_flag(&self, c64_instance: usize) -> i32 {
+        unsafe {
+            (self.a64lib.get(b"getSpeedFlag").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+        }
+    }
+
+    pub fn get_frequency(&self, c64_instance: usize) -> i32 {
+        unsafe {
+            (self.a64lib.get(b"getFrequency").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
         }
     }
 

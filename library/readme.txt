@@ -1,7 +1,7 @@
 
-                    ACID 64 Player Library v2.0.4
+                    ACID 64 Player Library v2.0.5
 
-                 Copyright (c) 2008-2019 Wilfred Bos
+                 Copyright (c) 2008-2020 Wilfred Bos
                      Programmed by: Wilfred Bos
                        https://www.acid64.com
                 Concept by: Sándor Téli & Wilfred Bos
@@ -63,12 +63,17 @@ The library supports the following methods (in Delphi code):
   function isStereoSid(c64: Pointer): Boolean; stdcall; external 'acid64pro';
   function getNumberOfSids(c64: Pointer): Integer; stdcall; external 'acid64pro';
   function getAncientMd5Hash(c64: Pointer): PChar; stdcall; external 'acid64pro';
+  procedure startSeek(time: LongWord);
+  procedure stopSeek();
+  function getCpuLoad(): Integer;
+  function getSpeedFlag(): Integer;
+  function getFrequency(): Integer;
 
 
 getVersion
 ==========
 The 'getVersion' method returns the version number of the library in hex.
-E.g. 0x204 means version 2.04.
+E.g. 0x205 means version 2.05.
 
 
 createC64Instance
@@ -192,6 +197,7 @@ return:
   SID_READ_COMMAND = 3;
   NEXT_PART_COMMAND = 4;
   SID_INIT_DONE_COMMAND = 5;
+  SID_SEEK_DONE_COMMAND = 6;
 
 To run the emulator and control a SID device the following code can be used:
 
@@ -540,3 +546,45 @@ registers $40-$5F.
 If e.g. the second SID address in the SID header is set to $D500, then is will
 be mapped to $D420-$D43F internally. Make sure you write the data for each SID
 mapping to a different device.
+
+
+startSeek
+=========
+The 'startSeek' method seeks the sid tune to the given time. The time is given
+in milliseconds. During the seek you need to keep calling the 'run' method. The
+getCommand method will not return any write, read, delay or idle commands. When
+the seek is done, the getCommand method will return SID_SEEK_DONE_COMMAND.
+
+
+stopSeek
+========
+With the 'stopSeek' method you will be able to stop the seek action. Normally
+this is automatically done when the seek is done, but in case you want to
+cancel it before the time is reached, you can use this method.
+Note that the seek action is cancelled when the loadFile is called. In this
+cause you don't have to call stopSeek.
+
+
+getCpuLoad
+==========
+The 'getCpuLoad' method returns the CPU load in percentages rounded as a whole
+number. RSID tunes that play in a loop will always have 100% CPU load.
+
+
+getSpeedFlag
+============
+The 'getSpeedFlag' method returns the speed flag of the current selected song.
+
+Possible values:
+    0 = VBI IRQ 
+        For RSID tunes it is always 0
+        For PSID tunes it means 50 Hz for PAL, 60 Hz for NTSC.
+    1 = CIA IRQ 
+        Default 60 Hz but the CIA timer can be overwritten by the tune.
+
+
+getFrequency
+============
+The 'getFrequency' method returns the highest frequency of the 4 CIA timers in
+hertz when the speed flag is set to CIA IRQ. When the speed flag is set to VBI
+IRQ, then it will return the frequency in hertz of the VBI IRQ.

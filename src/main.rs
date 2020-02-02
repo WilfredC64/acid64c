@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Wilfred Bos
+// Copyright (C) 2019 - 2020 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod console_player;
@@ -51,6 +51,7 @@ fn run() -> Result<(), String> {
     let filename = env::args().last().unwrap();
 
     let mut player = Player::new();
+    let device_names = player.get_device_names();
 
     for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with("-")) {
         match &argument[1..2] {
@@ -71,12 +72,12 @@ fn run() -> Result<(), String> {
     player.init_devices()?;
 
     if display_devices {
-        print_device_names(player.get_device_names());
+        print_device_names(device_names.lock().unwrap().to_vec());
         return Ok(());
     }
 
-    player.set_song_number(song_number);
     player.load_file(filename)?;
+    player.set_song_to_play(song_number)?;
     player.setup_sldb_and_stil(hvsc_location, display_stil)?;
 
     let version = player.get_library_version();
@@ -92,7 +93,7 @@ fn run() -> Result<(), String> {
 }
 
 fn print_usage() {
-    println!("ACID64 Console v1.04 - Copyright (c) 2003-2019 Wilfred Bos");
+    println!("ACID64 Console v1.04 - Copyright (c) 2003-2020 Wilfred Bos");
     println!("\nUsage: acid64c <options> <file_name>");
     println!("\n<Options>");
     println!("  -d{{device_number}}: set device number (1..n), default is 1");

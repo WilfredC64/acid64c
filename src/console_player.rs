@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Wilfred Bos
+// Copyright (C) 2019 - 2020 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod clock;
@@ -78,6 +78,10 @@ impl ConsolePlayer {
             }
 
             clock.refresh_clock();
+
+            if self.is_aborted() {
+                break;
+            }
             thread::sleep(Duration::from_millis(LOOP_RATE_IN_MS));
         }
 
@@ -111,6 +115,11 @@ impl ConsolePlayer {
             player_clone.lock().unwrap().play();
         });
         player_thread
+    }
+
+    #[inline]
+    fn is_aborted(&self) -> bool {
+        self.aborted.load(Ordering::SeqCst)
     }
 
     fn refresh_info(&mut self, clock: &mut Clock) {
