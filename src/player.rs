@@ -215,14 +215,21 @@ impl Player {
     }
 
     fn refresh_device_names(&mut self) {
-        let mut device_names = self.device_names.lock().unwrap();
-        device_names.clear();
+        let mut device_names = Vec::new();
 
         let device_count = self.network_sid_device.as_mut().unwrap().get_device_count();
         for i in 0..device_count {
-            let device_info = self.network_sid_device.as_mut().unwrap().get_device_info(i);
-            device_names.push(device_info);
+            let device_name = self.network_sid_device.as_mut().unwrap().get_device_info(i);
+            device_names.push(device_name);
         }
+
+        self.set_device_names(&mut device_names);
+    }
+
+    fn set_device_names(&mut self, new_device_names: &Vec<String>) {
+        let mut device_names = self.device_names.lock().unwrap();
+        device_names.clear();
+        device_names.clone_from(&new_device_names);
     }
 
     pub fn get_cycles_per_second(&mut self) -> u32 {
