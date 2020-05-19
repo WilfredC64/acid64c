@@ -178,9 +178,9 @@ impl Acid64Library {
         }
     }
 
-    pub fn get_sid_model(&self, c64_instance: usize) -> i32 {
+    pub fn get_sid_model(&self, c64_instance: usize, sid_nr: i32) -> i32 {
         unsafe {
-            (self.a64lib.get(b"getSidModel").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+            (self.a64lib.get(b"getSidModel").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, i32) -> i32>)(c64_instance, sid_nr)
         }
     }
 
@@ -295,6 +295,12 @@ impl Acid64Library {
         }
     }
 
+    pub fn get_sid_address(&self, c64_instance: usize, sid_nr: i32) -> i32 {
+        unsafe {
+            (self.a64lib.get(b"getSidAddress").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, i32) -> i32>)(c64_instance, sid_nr)
+        }
+    }
+
     pub fn start_seek(&self, c64_instance: usize, time: u32) {
         unsafe {
             (self.a64lib.get(b"startSeek").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, u32)>)(c64_instance, time);
@@ -319,9 +325,59 @@ impl Acid64Library {
         }
     }
 
+    pub fn get_speed_flags(&self, c64_instance: usize) -> i32 {
+        unsafe {
+            (self.a64lib.get(b"getSpeedFlags").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+        }
+    }
+
     pub fn get_frequency(&self, c64_instance: usize) -> i32 {
         unsafe {
             (self.a64lib.get(b"getFrequency").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+        }
+    }
+
+    pub fn get_mus_text(&self, c64_instance: usize, buffer: *mut u8, size: i32) {
+        unsafe {
+            (self.a64lib.get(b"getMusText").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer, size);
+        }
+    }
+
+    pub fn get_mus_colors(&self, c64_instance: usize, buffer: *mut u8, size: i32) {
+        unsafe {
+            (self.a64lib.get(b"getMusColors").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer, size);
+        }
+    }
+
+    pub fn get_file_type(&self, c64_instance: usize) -> String {
+        unsafe {
+            let file_type_cstyle = (self.a64lib.get(b"getFileType").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
+            Self::convert_pchar_to_ansi_string(file_type_cstyle)
+        }
+    }
+
+    pub fn get_file_format(&self, c64_instance: usize) -> String {
+        unsafe {
+            let file_format_cstyle = (self.a64lib.get(b"getFileFormat").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
+            Self::convert_pchar_to_ansi_string(file_format_cstyle)
+        }
+    }
+
+    pub fn is_basic_sid(&self, c64_instance: usize) -> bool {
+        unsafe {
+            (self.a64lib.get(b"isBasicSid").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> bool>)(c64_instance)
+        }
+    }
+
+    pub fn get_free_memory_address(&self, c64_instance: usize) -> i32 {
+        unsafe {
+            (self.a64lib.get(b"getFreeMemoryAddress").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+        }
+    }
+
+    pub fn get_free_memory_end_address(&self, c64_instance: usize) -> i32 {
+        unsafe {
+            (self.a64lib.get(b"getFreeMemoryEndAddress").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
         }
     }
 

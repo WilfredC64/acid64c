@@ -43,7 +43,7 @@ The library supports the following methods (in Delphi code):
   function getLoadEndAddress(c64: Pointer): Integer; stdcall; external 'acid64pro';
   function getPlayAddress(c64: Pointer): Integer; stdcall; external 'acid64pro';
   function getInitAddress(c64: Pointer): Integer; stdcall; external 'acid64pro';
-  function getSidModel(c64: Pointer): Integer; stdcall; external 'acid64pro';
+  function getSidModel(c64: Pointer, sidNr: Integer): Integer; stdcall; external 'acid64pro';
   function getC64Version(c64: Pointer): Integer; stdcall; external 'acid64pro';
   function getTime(c64: Pointer): LongWord; stdcall; external 'acid64pro';
   function getSongLength(c64: Pointer): Integer; stdcall; external 'acid64pro';
@@ -60,14 +60,22 @@ The library supports the following methods (in Delphi code):
   procedure getMemory(c64: Pointer; pBuffer: Pointer; size: Integer); stdcall; external 'acid64pro';
   procedure clearMemUsageOnFirstSidAccess(c64: Pointer; blnClear: Boolean); stdcall; external 'acid64pro';
   procedure clearMemUsageAfterInit(c64: Pointer; blnClear: Boolean); stdcall; external 'acid64pro';
-  function isStereoSid(c64: Pointer): Boolean; stdcall; external 'acid64pro';
   function getNumberOfSids(c64: Pointer): Integer; stdcall; external 'acid64pro';
   function getAncientMd5Hash(c64: Pointer): PChar; stdcall; external 'acid64pro';
-  procedure startSeek(time: LongWord);
-  procedure stopSeek();
-  function getCpuLoad(): Integer;
-  function getSpeedFlag(): Integer;
-  function getFrequency(): Integer;
+  procedure startSeek(time: LongWord); stdcall; external 'acid64pro';
+  procedure stopSeek(); stdcall; external 'acid64pro';
+  function getCpuLoad(): Integer; stdcall; external 'acid64pro';
+  function getSpeedFlag(): Integer; stdcall; external 'acid64pro';
+  function getSpeedFlags(c64: Pointer): Integer; stdcall; external 'acid64pro';
+  function getFrequency(): Integer; stdcall; external 'acid64pro';
+  function getFileType(c64: Pointer): PChar; stdcall; external 'acid64pro';
+  function getFileFormat(c64: Pointer): PChar; stdcall; external 'acid64pro';
+  procedure getMusText(c64: Pointer; pBuffer: Pointer; size: Integer); stdcall; external 'acid64pro';
+  procedure getMusColors(c64: Pointer; pBuffer: Pointer; size: Integer); stdcall; external 'acid64pro';
+  function isBasicSid(c64: Pointer): Boolean; stdcall; external 'acid64pro';
+  function getSidAddress(c64: Pointer; sidNr: Integer): Integer; stdcall; external 'acid64pro';
+  function getFreeMemoryAddress(c64: Pointer): Integer; stdcall; external 'acid64pro';
+  function getFreeMemoryEndAddress(c64: Pointer): Integer; stdcall; external 'acid64pro';
 
 
 getVersion
@@ -164,7 +172,7 @@ getFileName
 The 'getFileName' method can be used to retrieve the filename from a MD5 hash.
 The method can be used without a c64 instance. In order to use the 'getFileName'
 method you should first load the Song Length Database (SLDB) with method
-'loadSldb' since the info is retrieve from the SLDB data.
+'loadSldb' since the info is retrieved from the SLDB data.
 
 
 run
@@ -299,10 +307,12 @@ every second during running the SID tune.
 
 getSidModel
 ===========
-The 'getSidModel' method returns an integer that indicates the SID model. You
-can interpret it as follows:
+The 'getSidModel' method returns an integer that indicates the SID model for the
+specified SID chip.
 
-  intSidModel := getSidModel();
+You can interpret the returned value as follows:
+
+  intSidModel := getSidModel(sidNr);
   case intSidModel of
     0: model := 'Unknown';
     1: model := 'MOS 6581';
@@ -511,24 +521,6 @@ should be written to. The passed size is the size of the buffer. For the full
 memory, the size should be set to 65536 (64KB).
 
 
-isStereoSid
-===========
-This method is deprecated. Use 'getNumberOfSids' instead to find out how many
-SIDs are used.
-
-The 'isStereoSid' method returns a boolean indicating if the SID/MUS tune is a
-stereo tune. Call this method after calling the 'loadFile' method.
-
-If the method returns TRUE, the tune uses more than 1 SID chip. All writes to
-the second SID chip are mapped to registers $20-$3F. All writes to the third SID
-chip are mapped to registers $40-$5F. If e.g. the second SID address in the SID
-header is set to $D500, then is will be mapped to $D420-$D43F internally. Make
-sure you write the data for each SID mapping to a different device.
-
-If the method returns FALSE, then all writes to the SID chip are mapped to
-registers $00-$1F.
-
-
 getNumberOfSids
 ===============
 The 'getNumberOfSids' method returns the number of SIDs that are defined for the
@@ -576,11 +568,17 @@ getSpeedFlag
 The 'getSpeedFlag' method returns the speed flag of the current selected song.
 
 Possible values:
-    0 = VBI IRQ 
+    0 = VBI IRQ
         For RSID tunes it is always 0
         For PSID tunes it means 50 Hz for PAL, 60 Hz for NTSC.
-    1 = CIA IRQ 
+    1 = CIA IRQ
         Default 60 Hz but the CIA timer can be overwritten by the tune.
+
+
+getSpeedFlags
+=============
+The 'getSpeedFlags' method returns all the speed flags defined in the SID file.
+See 'speed' field in the SID File Format specification for details.
 
 
 getFrequency
@@ -588,3 +586,72 @@ getFrequency
 The 'getFrequency' method returns the highest frequency of the 4 CIA timers in
 hertz when the speed flag is set to CIA IRQ. When the speed flag is set to VBI
 IRQ, then it will return the frequency in hertz of the VBI IRQ.
+
+
+getFileType
+===========
+The 'getFileType' method returns the file type of the loaded file.
+
+Possible values:
+
+SID = SID file
+MUS = Sidplayer64 MUS file
+PRG = C64 Program file
+
+
+getFileFormat
+=============
+The 'getFileFormat' method returns the file format of the loaded file as text.
+
+
+getMusText
+==========
+The 'getMusText' receives the MUS text in PETSCII.
+
+The passed pointer is the pointer to the buffer where the MUS text will be
+written to. The passed size is the size of the buffer. The buffer size should
+be minimal 32 * 5 in size since the text can be 5 lines of each containing 32
+characters.
+
+
+getMusColors
+============
+The 'getMusColors' receives the colors of the MUS text.
+
+The passed pointer is the pointer to the buffer where the MUS colors will be
+written to. The passed size is the size of the buffer. The buffer size should
+be minimal 32 * 5 in size since the color data can be 5 lines of each
+containing 32 bytes.
+
+The color data exists of a byte that can have a value from 0 to 15 which
+represents the color code.
+
+
+isBasicSid
+==========
+The 'isBasicSid' returns a boolean which indicates if the SID file uses BASIC
+to play the music.
+
+
+getSidAddress
+=============
+The 'getSidAddress' method will retrieve the SID address location of the
+specified SID chip.
+
+To get the addresses of each SID chip used in the SID tune, you can call the
+'getNumberOfSids' method first to get the number of SIDs and then call the
+'getSidAddress' for each SID chip.
+
+
+getFreeMemoryAddress
+====================
+The 'getFreeMemoryAddress' method will retrieve the memory location of the free
+area that is not used by the SID tune. To get the end address of the area you
+can call the 'getFreeMemoryEndAddress' method.
+
+
+getFreeMemoryEndAddress
+=======================
+The 'getFreeMemoryEndAddress' method will retrieve the memory location of the
+end of the free area that is not used by the SID tune. To get the start address
+of the area you can call the 'getFreeMemoryAddress' method.

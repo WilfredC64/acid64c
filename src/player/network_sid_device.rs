@@ -64,7 +64,7 @@ enum Command {
     SetDelay,
     SetFadeIn,
     SetFadeOut,
-    SetPsidHeader
+    SetSidHeader
 }
 
 pub struct NetworkSidDevice {
@@ -77,7 +77,9 @@ pub struct NetworkSidDevice {
     device_count: i32,
     number_of_sids: i32,
     sid_clock: SidClock,
+    sid_model: i32,
     sampling_method: SamplingMethod,
+    turbo_mode: bool,
     aborted: Arc<AtomicBool>
 }
 
@@ -94,7 +96,9 @@ impl NetworkSidDevice {
             device_count: 0,
             number_of_sids: 0,
             sid_clock: SidClock::PAL,
+            sid_model: 0,
             sampling_method: SamplingMethod::BEST,
+            turbo_mode: false,
             aborted
         }
     }
@@ -132,6 +136,7 @@ impl NetworkSidDevice {
         self.interface_version = 0;
         self.number_of_sids = 0;
         self.sid_clock = SidClock::PAL;
+        self.sid_model = 0;
         self.sampling_method = SamplingMethod::BEST;
         self.reset_buffer();
     }
@@ -148,6 +153,10 @@ impl NetworkSidDevice {
     #[inline]
     fn get_config_count(&mut self) -> i32 {
         self.try_flush_buffer(Command::GetConfigCount, 0, None)[0] as i32
+    }
+
+    pub fn test_connection(&mut self) {
+        self.try_flush_buffer(Command::GetVersion, 0, None);
     }
 
     pub fn get_device_count(&mut self) -> i32 {
@@ -206,6 +215,8 @@ impl NetworkSidDevice {
     }
 
     pub fn set_sid_model(&mut self, device_number: i32, sid_model: i32) {
+        self.sid_model = sid_model;
+
         if self.interface_version >= 2 {
             if sid_model < self.device_count {
                 self.try_flush_buffer(Command::TrySetSidModel, device_number, Some(&[sid_model as u8]));
@@ -227,6 +238,29 @@ impl NetworkSidDevice {
         if self.interface_version >= 2 {
             self.try_flush_buffer(Command::TrySetSampling, 0, Some(&[sampling_method as u8 ^ 1]));
         }
+    }
+
+    pub fn set_sid_header(&mut self, sid_header: Vec<u8>) {
+        if self.interface_version >= 4 {
+            self.try_flush_buffer(Command::SetSidHeader, 0, Some(&sid_header));
+        }
+    }
+
+    pub fn set_fade_in(&mut self, time_millis: u32) {
+        if self.interface_version >= 4 {
+            self.try_flush_buffer(Command::SetFadeIn, 0, Some(&time_millis.to_be_bytes()));
+        }
+    }
+
+    pub fn set_fade_out(&mut self, time_millis: u32) {
+        if self.interface_version >= 4 {
+            self.try_flush_buffer(Command::SetFadeOut, 0, Some(&time_millis.to_be_bytes()));
+        }
+    }
+
+    pub fn device_reset(&mut self, device_number: i32) {
+        let default_volume = 0x0f;
+        self.try_flush_buffer(Command::TryReset, device_number, Some(&[default_volume as u8]));
     }
 
     pub fn reset_sid(&mut self, device_number: i32) {
@@ -284,6 +318,14 @@ impl NetworkSidDevice {
         }
     }
 
+    pub fn enable_turbo_mode(&mut self) {
+        self.turbo_mode = true;
+    }
+
+    pub fn disable_turbo_mode(&mut self) {
+        self.turbo_mode = false;
+    }
+
     pub fn dummy_write(&mut self, device_number: i32, cycles_input: u32) {
         self.write(device_number, cycles_input, 0x1e, 0);
     }
@@ -299,8 +341,7 @@ impl NetworkSidDevice {
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
-            let device_number = self.convert_device_number(device_number);
-            self.try_flush_buffer(Command::TryWrite, device_number, None);
+            self.force_flush(device_number);
         }
     }
 
@@ -312,7 +353,7 @@ impl NetworkSidDevice {
     #[inline]
     fn convert_device_number(&mut self, device_number: i32) -> i32 {
         if self.interface_version == 1 {
-            return device_number | (self.sid_clock as i32) << 1 | (self.sampling_method as i32) << 2;
+            return (self.sid_model & 0x01) | (self.sid_clock as i32) << 1 | (self.sampling_method as i32) << 2;
         }
         device_number
     }
@@ -377,32 +418,43 @@ impl NetworkSidDevice {
     }
 
     fn try_flush_buffer(&mut self, command: Command, device_number: i32, arguments: Option<&[u8]>) -> Vec<u8> {
-        self.set_command(command, device_number as u8, arguments);
+        if self.is_connected() {
+            self.set_command(command, device_number as u8, arguments);
 
-        let cycles_sent_to_server = self.buffer_cycles;
-        let mut idle_time = MIN_WAIT_TIME_BUSY_MS;
+            let cycles_sent_to_server = self.buffer_cycles;
+            let mut idle_time = MIN_WAIT_TIME_BUSY_MS;
 
-        loop {
-            let (device_state, result) = self.flush_buffer();
+            loop {
+                let (device_state, result) = self.flush_buffer();
 
-            if let CommandResponse::Busy = device_state {
-                if self.aborted.load(Ordering::SeqCst) {
-                    return vec![0];
-                }
-
-                thread::sleep(time::Duration::from_millis(idle_time));
-                idle_time = 1;
-                continue;
-            } else {
-                if let Command::TryWrite = command {
-                    if cycles_sent_to_server > CLIENT_WAIT_CYCLES_THRESHOLD {
-                        thread::sleep(time::Duration::from_millis(1));
+                if let CommandResponse::Busy = device_state {
+                    if self.aborted.load(Ordering::SeqCst) {
+                        return vec![0];
                     }
-                }
 
-                return result;
+                    if !self.turbo_mode {
+                        if let Command::TryWrite = command {
+                            thread::sleep(time::Duration::from_millis(idle_time));
+                        } else {
+                            thread::sleep(time::Duration::from_millis(0));
+                        }
+                    }
+                    idle_time = 1;
+                    continue;
+                } else {
+                    if !self.turbo_mode {
+                        if let Command::TryWrite = command {
+                            if cycles_sent_to_server > CLIENT_WAIT_CYCLES_THRESHOLD {
+                                thread::sleep(time::Duration::from_millis(1));
+                            }
+                        }
+                    }
+
+                    return result;
+                }
             }
         }
+        return vec![0];
     }
 
     fn flush_buffer(&mut self) -> (CommandResponse, Vec<u8>) {

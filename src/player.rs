@@ -250,7 +250,7 @@ impl Player {
     }
 
     pub fn get_sid_model(&mut self) -> i32 {
-        self.acid64_lib.get_sid_model(self.c64_instance)
+        self.acid64_lib.get_sid_model(self.c64_instance, 0)
     }
 
     pub fn get_c64_version(&mut self) -> i32 {
@@ -332,8 +332,8 @@ impl Player {
             Err(format!("File '{}' could not be loaded.", filename).to_string())
         } else {
             self.filename = Some(filename);
-            self.set_song_to_play(-1)?;
             self.configure_sid_device()?;
+            self.set_song_to_play(-1)?;
             self.acid64_lib.skip_silence(self.c64_instance, true);
             self.acid64_lib.enable_volume_fix(self.c64_instance, true);
             Ok(())
@@ -437,6 +437,7 @@ impl Player {
 
         self.configure_sid_model(number_of_sids)?;
         self.configure_sid_clock();
+        self.network_sid_device.as_mut().unwrap().device_reset(0);
         self.network_sid_device.as_mut().unwrap().set_sampling_method(SamplingMethod::BEST);
         Ok(())
     }
@@ -482,7 +483,7 @@ impl Player {
 
     pub fn configure_sid_model(&mut self, number_of_sids: i32) -> Result<(), String> {
         if self.device_number == -1 {
-            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance);
+            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance, 0);
 
             if sid_model == SID_MODEL_8580 {
                 self.device_number = 1;
