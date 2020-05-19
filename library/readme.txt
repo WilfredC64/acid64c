@@ -1,5 +1,5 @@
 
-                    ACID 64 Player Library v2.0.5
+                    ACID 64 Player Library v2.0.6
 
                  Copyright (c) 2008-2020 Wilfred Bos
                      Programmed by: Wilfred Bos
