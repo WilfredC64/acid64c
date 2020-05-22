@@ -437,8 +437,8 @@ impl Player {
 
         self.configure_sid_model(number_of_sids)?;
         self.configure_sid_clock();
-        self.network_sid_device.as_mut().unwrap().device_reset(0);
         self.network_sid_device.as_mut().unwrap().set_sampling_method(SamplingMethod::BEST);
+        self.network_sid_device.as_mut().unwrap().device_reset(0);
         Ok(())
     }
 

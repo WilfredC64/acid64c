@@ -260,7 +260,19 @@ impl NetworkSidDevice {
 
     pub fn device_reset(&mut self, device_number: i32) {
         let default_volume = 0x0f;
+        let device_number = self.convert_device_number(device_number);
         self.try_flush_buffer(Command::TryReset, device_number, Some(&[default_volume as u8]));
+        self.unmute(device_number, 0);
+        self.unmute(device_number, 1);
+        self.unmute(device_number, 2);
+        self.unmute(device_number, 3);
+    }
+
+    fn unmute(&mut self, device_number: i32, voice_number: i32) {
+        if !(voice_number == 3 && self.interface_version < 3) {
+            let device_number = self.convert_device_number(device_number);
+            self.try_flush_buffer(Command::Mute, device_number, Some(&[voice_number as u8, 0]));
+        }
     }
 
     pub fn reset_sid(&mut self, device_number: i32) {
