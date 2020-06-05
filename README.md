@@ -6,7 +6,7 @@ The player requires a network SID device to be installed such as
 [JSIDDevice](https://sourceforge.net/projects/jsidplay2/files/jsiddevice/).
 
 The player makes use of the acid64pro.dll win32 library. Since this dll is a 32-bit
-library, the code of the player can only run successfully when compiled for Windows 32 bit.
+library, the code of the player can only run successfully when compiled for Windows 32-bit.
 
 ### Building
 

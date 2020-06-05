@@ -38,7 +38,9 @@ enum SidCommand {
     Write,
     Read,
     NextPart,
-    InitDone
+    InitDone,
+    SeekDone,
+    SkipSilenceDone
 }
 
 impl SidCommand {
@@ -50,6 +52,8 @@ impl SidCommand {
             3 => SidCommand::Read,
             4 => SidCommand::NextPart,
             5 => SidCommand::InitDone,
+            6 => SidCommand::SeekDone,
+            7 => SidCommand::SkipSilenceDone,
             _ => panic!("Unknown value: {}", value),
         }
     }

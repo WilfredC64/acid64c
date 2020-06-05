@@ -204,8 +204,9 @@ return:
   SID_WRITE_COMMAND = 2;
   SID_READ_COMMAND = 3;
   NEXT_PART_COMMAND = 4;
-  SID_INIT_DONE_COMMAND = 5;
-  SID_SEEK_DONE_COMMAND = 6;
+  INIT_DONE_COMMAND = 5;
+  SEEK_DONE_COMMAND = 6;
+  SKIP_SILENCE_DONE_COMMAND = 7;
 
 To run the emulator and control a SID device the following code can be used:
 
@@ -376,6 +377,9 @@ instance. If enabled then the SID data will be analysed and checked when the
 first audible note is written. All the data that is written to the SID is still
 returned, only the cycle data is modified so that the tune starts immediately.
 
+When skipping silence is done, the getCommand method will return
+SKIP_SILENCE_DONE_COMMAND.
+
 In order to know how much time is skipped, you can simply use the getTime method
 when the first SID_WRITE_COMMAND is triggered. You can then subtract the time
 from the total amount that is retrieved from getSongLength, or display the
@@ -545,7 +549,7 @@ startSeek
 The 'startSeek' method seeks the sid tune to the given time. The time is given
 in milliseconds. During the seek you need to keep calling the 'run' method. The
 getCommand method will not return any write, read, delay or idle commands. When
-the seek is done, the getCommand method will return SID_SEEK_DONE_COMMAND.
+the seek is done, the getCommand method will return SEEK_DONE_COMMAND.
 
 
 stopSeek
