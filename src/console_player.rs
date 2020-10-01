@@ -13,7 +13,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
 
-const LOOP_RATE_IN_MS: u64 = 100;
+const LOOP_RATE_IN_MS: u64 = 50;
 
 pub struct ConsolePlayer {
     player: Arc<Mutex<Player>>,

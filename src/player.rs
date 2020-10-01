@@ -191,7 +191,9 @@ impl Player {
         };
 
         self.network_sid_device.as_mut().unwrap().reset_all_buffers(0);
-        self.aborted.store(true, Ordering::SeqCst);
+
+        // set aborted to false so that new commands will not be aborted on retry
+        self.aborted.store(false, Ordering::SeqCst);
     }
 
     fn process_player_commands(&mut self) {
