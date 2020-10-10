@@ -20,6 +20,19 @@ fn main() {
     }
 }
 
+fn parse_argument_numbers(arg_name: &str, arg_values: &str) -> Result<Vec<i32>, String> {
+    let values = arg_values.split(',');
+    let mut numbers = vec![];
+    for value in values {
+        let result = parse_argument_number(arg_name, value);
+        if result.is_err() {
+            return Err(result.err().unwrap());
+        }
+        numbers.push(result.unwrap());
+    }
+    Ok(numbers)
+}
+
 fn parse_argument_number(arg_name: &str, arg_value: &str) -> Result<i32, String> {
     let number = match arg_value.parse::<i32>() {
         Ok(i) => i,
@@ -46,7 +59,7 @@ fn run() -> Result<(), String> {
     let mut hvsc_location = None;
     let mut display_stil = false;
     let mut display_devices = false;
-    let mut device_number = -1;
+    let mut device_numbers = vec![-1];
     let mut song_number = -1;
     let filename = env::args().last().unwrap();
 
@@ -55,7 +68,7 @@ fn run() -> Result<(), String> {
 
     for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with("-")) {
         match &argument[1..2] {
-            "d" => device_number = parse_argument_number("Device number", &argument[2..])?,
+            "d" => device_numbers = parse_argument_numbers("Device number", &argument[2..])?,
             "h" => {
                 let host_name = argument.chars().skip(2).collect();
                 player.set_host_name(host_name);
@@ -68,7 +81,7 @@ fn run() -> Result<(), String> {
         }
     }
 
-    player.set_device_number(device_number);
+    player.set_device_numbers(device_numbers);
     player.init_devices()?;
 
     if display_devices {
@@ -77,7 +90,9 @@ fn run() -> Result<(), String> {
     }
 
     player.load_file(filename)?;
-    player.set_song_to_play(song_number)?;
+    if song_number != -1 {
+        player.set_song_to_play(song_number)?;
+    }
     player.setup_sldb_and_stil(hvsc_location, display_stil)?;
 
     let version = player.get_library_version();
@@ -96,7 +111,7 @@ fn print_usage() {
     println!("ACID64 Console v1.04 - Copyright (c) 2003-2020 Wilfred Bos");
     println!("\nUsage: acid64c <options> <file_name>");
     println!("\n<Options>");
-    println!("  -d{{device_number}}: set device number (1..n), default is 1");
+    println!("  -d{{device_number,n}}: set device numbers (1..n) for each SID chip, default is 1");
     println!("  -h{{host_name}}: host name or ip of network sid device, default is localhost");
     println!("  -i: display STIL info if present");
     println!("  -l{{hvsc_location}}: specify the HVSC location for song length and STIL info");

@@ -87,6 +87,12 @@ impl ConsolePlayer {
 
         clock.stop();
         self.stop_player(player_thread);
+
+        let last_error = self.player.lock().unwrap().get_last_error();
+        if let Some(last_error) = last_error {
+            println!("\n\nERROR: {}\nExiting!", last_error);
+        }
+
         Ok(())
     }
 
@@ -104,6 +110,7 @@ impl ConsolePlayer {
     fn stop_player(&mut self, player_thread: thread::JoinHandle<()>) {
         self.aborted.store(true, Ordering::SeqCst);
         let _ = player_thread.join();
+        self.aborted.store(false, Ordering::SeqCst);
     }
 
     #[inline]
@@ -229,11 +236,21 @@ impl ConsolePlayer {
 
     fn print_device_info(&mut self) {
         let mut player= self.player.lock().unwrap();
-        let device_number = player.get_device_number();
+        let device_numbers = player.get_device_numbers();
         let song_number = player.get_song_number();
         let number_of_songs = player.get_number_of_songs();
-        let device_info = player.get_device_info(device_number);
+        let number_of_sids = player.get_number_of_sids();
 
-        println!("\nPlaying song {} of {} on device {}: {}", song_number + 1, number_of_songs, device_number + 1, device_info);
+        if number_of_sids > 1 {
+            println!("\nPlaying song {} of {} on devices:", song_number + 1, number_of_songs);
+            for i in 0..number_of_sids {
+                let device_info = player.get_device_info(device_numbers[i as usize]);
+                println!("SID {} -> {:>2}: {}", i + 1, device_numbers[i as usize] + 1, device_info);
+            }
+
+        } else {
+            let device_info = player.get_device_info(device_numbers[0]);
+            println!("\nPlaying song {} of {} on device {}: {}", song_number + 1, number_of_songs, device_numbers[0] + 1, device_info);
+        }
     }
 }

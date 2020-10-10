@@ -7,6 +7,8 @@ use std::net::{TcpStream, Shutdown};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Arc, str, thread, time};
 
+use super::sid_device::{SidDevice, SidClock, SamplingMethod};
+
 const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
 const RESPONSE_BUFFER_SIZE: usize = 260;
 const BUFFER_SINGLE_WRITE_SIZE: usize = 4;  // cycles 2 bytes, register 1 byte and data 1 byte
@@ -18,19 +20,6 @@ const MIN_WAIT_TIME_BUSY_MS: u64 = 15;
 const BUFFER_HEADER_SIZE: usize = 4;
 const DEFAULT_DEVICE_COUNT_INTERFACE_V1: i32 = 2;
 const SOCKET_CONNECTION_TIMEOUT: u64 = 1000;
-
-#[derive(Copy, Clone)]
-pub enum SidClock {
-    PAL = 0,
-    NTSC = 1
-}
-
-#[allow(dead_code)]
-#[derive(Copy, Clone)]
-pub enum SamplingMethod {
-    BEST = 0,
-    FAST = 1
-}
 
 #[derive(Copy, Clone)]
 enum CommandResponse {
@@ -67,6 +56,108 @@ enum Command {
     SetSidHeader
 }
 
+pub struct NetworkSidDeviceFacade {
+    pub ns_device: NetworkSidDevice
+}
+
+impl SidDevice for NetworkSidDeviceFacade {
+    fn disconnect(&mut self, _dev_nr: i32) {
+        self.ns_device.disconnect();
+    }
+
+    fn is_connected(&mut self, _dev_nr: i32) -> bool {
+        self.ns_device.is_connected()
+    }
+
+    fn get_last_error(&mut self, _dev_nr: i32) -> Option<String> {
+        self.ns_device.get_last_error()
+    }
+
+    fn test_connection(&mut self, _dev_nr: i32) {
+        self.ns_device.test_connection();
+    }
+
+    fn can_pair_devices(&mut self, _dev1: i32, _dev2: i32) -> bool {
+        true
+    }
+
+    fn get_device_count(&mut self, _dev_nr: i32) -> i32 {
+        self.ns_device.get_device_count()
+    }
+
+    fn get_device_info(&mut self, dev_nr: i32) -> String {
+        self.ns_device.get_device_info(dev_nr)
+    }
+
+    fn set_sid_count(&mut self, _dev_nr: i32, sid_count: i32) {
+        self.ns_device.set_sid_count(sid_count);
+    }
+
+    fn set_sid_position(&mut self, _dev_nr: i32, sid_position: i8) {
+        self.ns_device.set_sid_position(sid_position);
+    }
+
+    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
+        self.ns_device.set_sid_model(dev_nr, sid_socket);
+    }
+
+    fn set_sid_clock(&mut self, _dev_nr: i32, sid_clock: SidClock) {
+        self.ns_device.set_sid_clock(sid_clock);
+    }
+
+    fn set_sampling_method(&mut self, _dev_nr: i32, sampling_method: SamplingMethod) {
+        self.ns_device.set_sampling_method(sampling_method);
+    }
+
+    fn set_sid_header(&mut self, _dev_nr: i32, sid_header: Vec<u8>) {
+        self.ns_device.set_sid_header(sid_header);
+    }
+
+    fn set_fade_in(&mut self, _dev_nr: i32, time_millis: u32) {
+        self.ns_device.set_fade_in(time_millis);
+    }
+
+    fn set_fade_out(&mut self, _dev_nr: i32, time_millis: u32) {
+        self.ns_device.set_fade_out(time_millis);
+    }
+
+    fn device_reset(&mut self, _dev_nr: i32) {
+        self.ns_device.device_reset(0);
+    }
+
+    fn reset_all_sids(&mut self, _dev_nr: i32) {
+        self.ns_device.reset_all_sids();
+    }
+
+    fn reset_sid(&mut self, _dev_nr: i32) {
+        self.ns_device.reset_sid(0);
+    }
+
+    fn reset_all_buffers(&mut self, _dev_nr: i32) {
+        self.ns_device.reset_all_buffers(0);
+    }
+
+    fn enable_turbo_mode(&mut self, _dev_nr: i32) {
+        self.ns_device.enable_turbo_mode();
+    }
+
+    fn disable_turbo_mode(&mut self, _dev_nr: i32) {
+        self.ns_device.disable_turbo_mode();
+    }
+
+    fn dummy_write(&mut self, _dev_nr: i32, cycles_input: u32) {
+        self.ns_device.dummy_write(0, cycles_input);
+    }
+
+    fn write(&mut self, _dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
+        self.ns_device.write(0, cycles_input, reg, data);
+    }
+
+    fn force_flush(&mut self, _dev_nr: i32) {
+        self.ns_device.force_flush(0);
+    }
+}
+
 pub struct NetworkSidDevice {
     sid_device: Option<TcpStream>,
     interface_version: i32,
@@ -80,6 +171,7 @@ pub struct NetworkSidDevice {
     sid_model: i32,
     sampling_method: SamplingMethod,
     turbo_mode: bool,
+    last_error: Option<String>,
     aborted: Arc<AtomicBool>
 }
 
@@ -99,11 +191,15 @@ impl NetworkSidDevice {
             sid_model: 0,
             sampling_method: SamplingMethod::BEST,
             turbo_mode: false,
+            last_error: None,
             aborted
         }
     }
 
     pub fn connect(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
+        self.disconnect();
+        self.last_error = None;
+
         let server_url = [ip_address, port].join(":").parse().unwrap();
 
         if let Ok(stream) = TcpStream::connect_timeout(&server_url, time::Duration::from_millis(SOCKET_CONNECTION_TIMEOUT)) {
@@ -119,7 +215,7 @@ impl NetworkSidDevice {
 
             Ok(())
         } else {
-            Err(format!("Could not connect to: {}", &server_url))
+            Err(format!("Could not connect to: {}.", &server_url))
         }
     }
 
@@ -141,7 +237,16 @@ impl NetworkSidDevice {
         self.reset_buffer();
     }
 
-    pub fn is_connected(&self) -> bool {
+    pub fn disconnect_with_error(&mut self, error_message: String) {
+        self.last_error = Some(error_message);
+        self.disconnect();
+    }
+
+    pub fn get_last_error(&mut self) -> Option<String> {
+        self.last_error.clone()
+    }
+
+    pub fn is_connected(&mut self) -> bool {
         self.sid_device.is_some()
     }
 
@@ -163,9 +268,9 @@ impl NetworkSidDevice {
         self.device_count
     }
 
-    pub fn get_device_info(&mut self, device_number: i32) -> String {
+    pub fn get_device_info(&mut self, dev_nr: i32) -> String {
         if self.interface_version >= 2 {
-            let device = self.try_flush_buffer(Command::GetConfigInfo, device_number, None);
+            let device = self.try_flush_buffer(Command::GetConfigInfo, dev_nr, None);
 
             if device.len() > 0 {
                 return String::from_utf8(device).unwrap()
@@ -180,7 +285,7 @@ impl NetworkSidDevice {
 
             "Unknown".to_string()
         } else {
-            if device_number == 0 {
+            if dev_nr == 0 {
                 "Default 6581".to_string()
             } else {
                 "Default 8580".to_string()
@@ -214,12 +319,12 @@ impl NetworkSidDevice {
         }
     }
 
-    pub fn set_sid_model(&mut self, device_number: i32, sid_model: i32) {
-        self.sid_model = sid_model;
+    pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
+        self.sid_model = dev_nr;
 
         if self.interface_version >= 2 {
-            if sid_model < self.device_count {
-                self.try_flush_buffer(Command::TrySetSidModel, device_number, Some(&[sid_model as u8]));
+            if dev_nr < self.device_count {
+                self.try_flush_buffer(Command::TrySetSidModel, sid_socket, Some(&[dev_nr as u8]));
             }
         }
     }
@@ -258,75 +363,80 @@ impl NetworkSidDevice {
         }
     }
 
-    pub fn device_reset(&mut self, device_number: i32) {
+    pub fn device_reset(&mut self, dev_nr: i32) {
         let default_volume = 0x0f;
-        let device_number = self.convert_device_number(device_number);
-        self.try_flush_buffer(Command::TryReset, device_number, Some(&[default_volume as u8]));
-        self.unmute(device_number, 0);
-        self.unmute(device_number, 1);
-        self.unmute(device_number, 2);
-        self.unmute(device_number, 3);
+        let dev_nr = self.convert_device_number(dev_nr);
+        self.try_flush_buffer(Command::TryReset, dev_nr, Some(&[default_volume as u8]));
+        self.unmute(dev_nr, 0);
+        self.unmute(dev_nr, 1);
+        self.unmute(dev_nr, 2);
+        self.unmute(dev_nr, 3);
     }
 
-    fn unmute(&mut self, device_number: i32, voice_number: i32) {
+    pub fn reset_all_sids(&mut self) {
+        // not implemented
+    }
+
+    fn unmute(&mut self, dev_nr: i32, voice_number: i32) {
         if !(voice_number == 3 && self.interface_version < 3) {
-            let device_number = self.convert_device_number(device_number);
-            self.try_flush_buffer(Command::Mute, device_number, Some(&[voice_number as u8, 0]));
+            let dev_nr = self.convert_device_number(dev_nr);
+            self.try_flush_buffer(Command::Mute, dev_nr, Some(&[voice_number as u8, 0]));
         }
     }
 
-    pub fn reset_sid(&mut self, device_number: i32) {
+    pub fn reset_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
-            self.write(device_number, 8, 0x04, 0);
-            self.write(device_number, 8, 0x0b, 0);
-            self.write(device_number, 8, 0x12, 0);
+            self.write(dev_nr, 8, 0x04, 0);
+            self.write(dev_nr, 8, 0x0b, 0);
+            self.write(dev_nr, 8, 0x12, 0);
 
-            self.write(device_number, 8, 0x00, 0);
-            self.write(device_number, 8, 0x01, 0);
-            self.write(device_number, 8, 0x07, 0);
-            self.write(device_number, 8, 0x08, 0);
-            self.write(device_number, 8, 0x0e, 0);
-            self.write(device_number, 8, 0x0f, 0);
+            self.write(dev_nr, 8, 0x00, 0);
+            self.write(dev_nr, 8, 0x01, 0);
+            self.write(dev_nr, 8, 0x07, 0);
+            self.write(dev_nr, 8, 0x08, 0);
+            self.write(dev_nr, 8, 0x0e, 0);
+            self.write(dev_nr, 8, 0x0f, 0);
 
-            self.reset_sid_register(device_number, 0x02);
-            self.reset_sid_register(device_number, 0x03);
-            self.reset_sid_register(device_number, 0x04);
-            self.reset_sid_register(device_number, 0x05);
-            self.reset_sid_register(device_number, 0x06);
+            self.reset_sid_register(dev_nr, 0x02);
+            self.reset_sid_register(dev_nr, 0x03);
+            self.reset_sid_register(dev_nr, 0x04);
+            self.reset_sid_register(dev_nr, 0x05);
+            self.reset_sid_register(dev_nr, 0x06);
 
-            self.reset_sid_register(device_number, 0x09);
-            self.reset_sid_register(device_number, 0x0a);
-            self.reset_sid_register(device_number, 0x0b);
-            self.reset_sid_register(device_number, 0x0c);
-            self.reset_sid_register(device_number, 0x0d);
+            self.reset_sid_register(dev_nr, 0x09);
+            self.reset_sid_register(dev_nr, 0x0a);
+            self.reset_sid_register(dev_nr, 0x0b);
+            self.reset_sid_register(dev_nr, 0x0c);
+            self.reset_sid_register(dev_nr, 0x0d);
 
-            self.reset_sid_register(device_number, 0x10);
-            self.reset_sid_register(device_number, 0x11);
-            self.reset_sid_register(device_number, 0x12);
-            self.reset_sid_register(device_number, 0x13);
-            self.reset_sid_register(device_number, 0x14);
+            self.reset_sid_register(dev_nr, 0x10);
+            self.reset_sid_register(dev_nr, 0x11);
+            self.reset_sid_register(dev_nr, 0x12);
+            self.reset_sid_register(dev_nr, 0x13);
+            self.reset_sid_register(dev_nr, 0x14);
 
-            self.reset_sid_register(device_number, 0x15);
-            self.reset_sid_register(device_number, 0x16);
-            self.reset_sid_register(device_number, 0x17);
-            self.reset_sid_register(device_number, 0x19);
+            self.reset_sid_register(dev_nr, 0x15);
+            self.reset_sid_register(dev_nr, 0x16);
+            self.reset_sid_register(dev_nr, 0x17);
+            self.reset_sid_register(dev_nr, 0x19);
 
-            self.dummy_write(device_number, 40000);
-            self.force_flush(device_number);
+            self.dummy_write(dev_nr, 40000);
+            self.force_flush(dev_nr);
         }
     }
 
-    fn reset_sid_register(&mut self, device_number: i32, reg: u8) {
-        self.write(device_number, 8, reg, 0xff);
-        self.write(device_number, 8, reg, 0x08);
-        self.dummy_write(device_number, 50);
-        self.write(device_number, 8, reg, 0x00);
+    #[inline]
+    fn reset_sid_register(&mut self, dev_nr: i32, reg: u8) {
+        self.write(dev_nr, 8, reg, 0xff);
+        self.write(dev_nr, 8, reg, 0x08);
+        self.dummy_write(dev_nr, 50);
+        self.write(dev_nr, 8, reg, 0x00);
     }
 
-    pub fn reset_all_buffers(&mut self, device_number: i32) {
+    pub fn reset_all_buffers(&mut self, dev_nr: i32) {
         self.reset_buffer();
         if self.number_of_sids > 0 {
-            self.try_flush_buffer(Command::Flush, device_number, None);
+            self.try_flush_buffer(Command::Flush, dev_nr, None);
         }
     }
 
@@ -338,14 +448,14 @@ impl NetworkSidDevice {
         self.turbo_mode = false;
     }
 
-    pub fn dummy_write(&mut self, device_number: i32, cycles_input: u32) {
-        self.write(device_number, cycles_input, 0x1e, 0);
+    pub fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32) {
+        self.write(dev_nr, cycles_input, 0x1e, 0);
     }
 
-    pub fn write(&mut self, device_number: i32, cycles_input: u32, reg: u8, data: u8) {
+    pub fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
         let cycles = if cycles_input > 0xffff {
-            let device_number = self.convert_device_number(device_number);
-            self.delay(device_number, cycles_input, 0x100)
+            let dev_nr = self.convert_device_number(dev_nr);
+            self.delay(dev_nr, cycles_input, 0x100)
         } else {
             cycles_input
         };
@@ -353,34 +463,35 @@ impl NetworkSidDevice {
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
-            self.force_flush(device_number);
+            self.force_flush(dev_nr);
         }
     }
 
-    pub fn force_flush(&mut self, device_number: i32) {
-        let device_number = self.convert_device_number(device_number);
-        self.try_flush_buffer(Command::TryWrite, device_number, None);
+    pub fn force_flush(&mut self, dev_nr: i32) {
+        let dev_nr = self.convert_device_number(dev_nr);
+        self.try_flush_buffer(Command::TryWrite, dev_nr, None);
     }
 
     #[inline]
-    fn convert_device_number(&mut self, device_number: i32) -> i32 {
+    fn convert_device_number(&mut self, dev_nr: i32) -> i32 {
         if self.interface_version == 1 {
             return (self.sid_model & 0x01) | (self.sid_clock as i32) << 1 | (self.sampling_method as i32) << 2;
         }
-        device_number
+        dev_nr
     }
 
-    fn delay(&mut self, device_number: i32, cycles: u32, minimum_cycles_to_remain: u32) -> u32 {
-        self.flush_pending_writes(device_number);
+    #[inline]
+    fn delay(&mut self, dev_nr: i32, cycles: u32, minimum_cycles_to_remain: u32) -> u32 {
+        self.flush_pending_writes(dev_nr);
 
         let mut cycles = cycles - minimum_cycles_to_remain;
         while cycles > 0xffff {
-            self.flush_delay(device_number, 0xffff);
+            self.flush_delay(dev_nr, 0xffff);
             cycles -= 0xffff;
         }
 
         if cycles > MIN_CYCLES_FOR_DELAY {
-            self.flush_delay(device_number, cycles as u16);
+            self.flush_delay(dev_nr, cycles as u16);
             cycles = 0;
         }
 
@@ -388,14 +499,14 @@ impl NetworkSidDevice {
     }
 
     #[inline]
-    fn flush_delay(&mut self, device_number: i32, cycles: u16) {
-        self.try_flush_buffer(Command::TryDelay, device_number, Some(&[(cycles >> 8) as u8, (cycles & 0xff) as u8]));
+    fn flush_delay(&mut self, dev_nr: i32, cycles: u16) {
+        self.try_flush_buffer(Command::TryDelay, dev_nr, Some(&[(cycles >> 8) as u8, (cycles & 0xff) as u8]));
     }
 
     #[inline]
-    fn flush_pending_writes(&mut self, device_number: i32) {
+    fn flush_pending_writes(&mut self, dev_nr: i32) {
         if self.buffer_index > BUFFER_HEADER_SIZE {
-            self.try_flush_buffer(Command::TryWrite, device_number, None);
+            self.try_flush_buffer(Command::TryWrite, dev_nr, None);
         }
     }
 
@@ -429,9 +540,9 @@ impl NetworkSidDevice {
         self.buffer_cycles += cycles & 0xffff;
     }
 
-    fn try_flush_buffer(&mut self, command: Command, device_number: i32, arguments: Option<&[u8]>) -> Vec<u8> {
+    fn try_flush_buffer(&mut self, command: Command, dev_nr: i32, arguments: Option<&[u8]>) -> Vec<u8> {
         if self.is_connected() {
-            self.set_command(command, device_number as u8, arguments);
+            self.set_command(command, dev_nr as u8, arguments);
 
             let cycles_sent_to_server = self.buffer_cycles;
             let mut idle_time = MIN_WAIT_TIME_BUSY_MS;
@@ -440,7 +551,7 @@ impl NetworkSidDevice {
                 let (device_state, result) = self.flush_buffer();
 
                 if let CommandResponse::Busy = device_state {
-                    if self.aborted.load(Ordering::SeqCst) {
+                    if self.is_aborted() {
                         return vec![0];
                     }
 
@@ -478,13 +589,12 @@ impl NetworkSidDevice {
             return (CommandResponse::Error, vec![0]);
         }
 
-        let (response, data) = self.read_data();
+        self.read_data()
+    }
 
-        if let CommandResponse::Error = response {
-            self.read_error_message();
-        }
-
-        (response, data)
+    #[inline]
+    fn is_aborted(&self) -> bool {
+        self.aborted.load(Ordering::SeqCst)
     }
 
     #[inline]
@@ -507,12 +617,12 @@ impl NetworkSidDevice {
             match result {
                 Ok(size) => {
                     if size != self.buffer_index {
-                        self.disconnect();
+                        self.disconnect_with_error("Failure during network write.".to_string());
                         return self.generate_error()
                     }
                 },
                 Err(_) => {
-                    self.disconnect();
+                    self.disconnect_with_error("Failure during network write.".to_string());
                     return self.generate_error();
                 }
             }
@@ -529,19 +639,16 @@ impl NetworkSidDevice {
             match result {
                 Ok(size) => {
                     if size <= 0 {
-                        self.disconnect();
+                        self.disconnect_with_error("Failure during network write.".to_string());
                         return (self.generate_error(), vec![0])
                     }
+                    self.handle_response(size)
                 },
                 Err(_) => {
-                    self.disconnect();
+                    self.disconnect_with_error("Failure during network write.".to_string());
                     return (self.generate_error(), vec![0]);
                 }
             }
-
-            let result_size = result.unwrap();
-
-            self.handle_response(result_size)
         } else {
             return (self.generate_error(), vec![0]);
         }
@@ -571,25 +678,7 @@ impl NetworkSidDevice {
             return (CommandResponse::Ok, self.response_buffer[2..result_size - 1].to_vec());
         }
 
-        (CommandResponse::Error, vec![0])
-    }
-
-    fn read_error_message(&mut self) -> (CommandResponse, u8) {
-        if self.sid_device.is_some() {
-            let result = self.sid_device.as_ref().unwrap().read(&mut self.write_buffer[0..MAX_SID_WRITES]);
-
-            match result {
-                Ok(size) => {
-                    panic!("{}", str::from_utf8(&self.write_buffer[0..size]).unwrap());
-                },
-                Err(_) => {
-                    self.disconnect();
-                    return (self.generate_error(), 0);
-                }
-            }
-        } else {
-            return (self.generate_error(), 0);
-        }
+        panic!("{}", str::from_utf8(&self.response_buffer[1..result_size]).unwrap());
     }
 
     #[inline]

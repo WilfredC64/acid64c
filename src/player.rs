@@ -3,16 +3,22 @@
 
 mod acid64_library;
 mod network_sid_device;
+mod hardsid_usb;
+mod hardsid_usb_device;
+mod sid_device;
+mod sid_devices;
 
 use crate::utils::{hvsc, network};
 
 use self::acid64_library::Acid64Library;
-use self::network_sid_device::{NetworkSidDevice, SidClock, SamplingMethod};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+
+use self::sid_device::{SidDevice, SidClock, SamplingMethod};
+use crate::player::sid_devices::{SidDevices, SidDevicesFacade};
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
 const NTSC_CYCLES_PER_SECOND: u32 = 263 * 65 * 60;
@@ -62,9 +68,10 @@ impl SidCommand {
 pub struct Player {
     acid64_lib: Acid64Library,
     c64_instance: usize,
-    network_sid_device: Option<NetworkSidDevice>,
+    sid_device: Option<Box<dyn SidDevice + Send>>,
     filename: Option<String>,
     device_number: i32,
+    device_numbers: Vec<i32>,
     song_number: i32,
     host_name: String,
     port: String,
@@ -85,16 +92,18 @@ impl Drop for Player {
     }
 }
 
-impl Player {
+impl Player
+{
     pub fn new() -> Player {
         let (cmd_sender, cmd_receiver) = sync_channel(0);
 
         let mut player_properties = Player {
             acid64_lib: Acid64Library::new(),
             c64_instance: 0,
-            network_sid_device: None,
+            sid_device: None,
             filename: None,
             device_number: 0,
+            device_numbers: vec![],
             song_number: 0,
             host_name: DEFAULT_HOST.to_string(),
             port: DEFAULT_PORT_NUMBER.to_string(),
@@ -123,8 +132,10 @@ impl Player {
         SyncSender::clone(&self.cmd_sender)
     }
 
-    pub fn set_device_number(&mut self, device_number: i32) {
-        self.device_number = device_number;
+    pub fn set_device_numbers(&mut self, device_numbers: Vec<i32>) {
+        self.device_number = *device_numbers.get(0).unwrap_or(&-1);
+
+        self.device_numbers = device_numbers;
     }
 
     pub fn set_host_name(&mut self, host_name: String) {
@@ -157,7 +168,7 @@ impl Player {
                 continue;
             }
 
-            if !self.network_sid_device.as_mut().unwrap().is_connected() {
+            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
                 break;
             }
 
@@ -181,7 +192,7 @@ impl Player {
                         idle_count += cycles_per_second / 1000;
 
                         if idle_count >= cycles_per_second {
-                            self.network_sid_device.as_mut().unwrap().dummy_write(0, cycles_per_second);
+                            self.sid_device.as_mut().unwrap().dummy_write(self.device_number, cycles_per_second);
                             idle_count -= cycles_per_second
                         }
                     }
@@ -190,10 +201,10 @@ impl Player {
             }
         };
 
-        self.network_sid_device.as_mut().unwrap().reset_all_buffers(0);
+        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+        self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
 
-        // set aborted to false so that new commands will not be aborted on retry
-        self.aborted.store(false, Ordering::SeqCst);
+        self.aborted.store(true, Ordering::SeqCst);
     }
 
     fn process_player_commands(&mut self) {
@@ -208,7 +219,7 @@ impl Player {
                     self.paused = false;
                 },
                 PlayerCommand::Pause => {
-                    self.network_sid_device.as_mut().unwrap().reset_all_buffers(0);
+                    self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
                     self.paused = true;
                 },
                 _ => ()
@@ -220,12 +231,16 @@ impl Player {
         Arc::clone(&self.device_names)
     }
 
+    pub fn get_last_error(&mut self) -> Option<String> {
+        self.sid_device.as_mut().unwrap().get_last_error(self.device_number)
+    }
+
     fn refresh_device_names(&mut self) {
         let mut device_names = Vec::new();
 
-        let device_count = self.network_sid_device.as_mut().unwrap().get_device_count();
+        let device_count = self.sid_device.as_mut().unwrap().get_device_count(self.device_number);
         for i in 0..device_count {
-            let device_name = self.network_sid_device.as_mut().unwrap().get_device_info(i);
+            let device_name = self.sid_device.as_mut().unwrap().get_device_info(i);
             device_names.push(device_name);
         }
 
@@ -279,8 +294,8 @@ impl Player {
         self.acid64_lib.get_stil_entry(self.c64_instance)
     }
 
-    pub fn get_device_number(&self) -> i32 {
-        self.device_number
+    pub fn get_device_numbers(&self) -> Vec<i32> {
+        self.device_numbers.clone()
     }
 
     pub fn get_song_number(&self) -> i32 {
@@ -292,7 +307,7 @@ impl Player {
     }
 
     pub fn get_device_info(&mut self, device_number: i32) -> String {
-        self.network_sid_device.as_mut().unwrap().get_device_info(device_number)
+        self.sid_device.as_mut().unwrap().get_device_info(device_number)
     }
 
     pub fn setup_sldb_and_stil(&mut self, hvsc_location: Option<String>, load_stil: bool) -> Result<(), String> {
@@ -315,13 +330,15 @@ impl Player {
     }
 
     pub fn init_devices(&mut self) -> Result<(), String> {
-        if self.network_sid_device.is_none() {
+        if self.sid_device.is_none() {
             if !network::is_local_ip_address(&self.host_name) {
                 return Err(format!("{} is not in the local network or invalid.", self.host_name));
             }
 
-            self.network_sid_device = Some(NetworkSidDevice::new(Arc::clone(&self.aborted)));
-            self.network_sid_device.as_mut().unwrap().connect(&self.host_name, &self.port)?;
+            let mut devices = SidDevices::new(Arc::clone(&self.aborted));
+            devices.connect(&self.host_name, &self.port)?;
+            let sid_device = SidDevicesFacade{ devices };
+            self.sid_device = Some(Box::new(sid_device));
 
             self.refresh_device_names();
         }
@@ -346,6 +363,10 @@ impl Player {
         }
     }
 
+    pub fn get_number_of_sids(&mut self) -> i32 {
+        self.acid64_lib.get_number_of_sids(self.c64_instance)
+    }
+
     #[inline]
     fn is_aborted(&self) -> bool {
         self.aborted.load(Ordering::SeqCst)
@@ -357,7 +378,7 @@ impl Player {
         let register = self.acid64_lib.get_register(self.c64_instance);
         let data = self.acid64_lib.get_data(self.c64_instance);
 
-        self.write_to_sid(0, cycles, register, data);
+        self.write_to_sid(self.device_number, cycles, register, data);
 
         self.last_sid_write[register as usize] = data;
         cycles
@@ -365,12 +386,12 @@ impl Player {
 
     #[inline]
     fn write_to_sid(&mut self, device_number: i32, cycles: u32, reg: u8, data: u8) {
-        self.network_sid_device.as_mut().unwrap().write(device_number, cycles, reg, data);
+        self.sid_device.as_mut().unwrap().write(device_number, cycles, reg, data);
     }
 
     #[inline]
     fn write_last_sid_write(&mut self, reg: u8) {
-        self.write_to_sid(0, MIN_CYCLE_SID_WRITE, reg, self.last_sid_write[reg as usize]);
+        self.write_to_sid(self.device_number, MIN_CYCLE_SID_WRITE, reg, self.last_sid_write[reg as usize]);
     }
 
     fn write_last_sid_writes(&mut self) {
@@ -438,13 +459,15 @@ impl Player {
 
     fn configure_sid_device(&mut self) -> Result<(), String> {
         let number_of_sids = self.acid64_lib.get_number_of_sids(self.c64_instance);
-        self.network_sid_device.as_mut().unwrap().set_sid_count(number_of_sids);
-        self.network_sid_device.as_mut().unwrap().set_sid_position(50);
+        self.fix_device_numbers(number_of_sids)?;
 
-        self.configure_sid_model(number_of_sids)?;
+        self.sid_device.as_mut().unwrap().set_sid_count(self.device_number, number_of_sids);
+        self.sid_device.as_mut().unwrap().set_sid_position(self.device_number, 50);
+
+        self.configure_sid_model(number_of_sids);
         self.configure_sid_clock();
-        self.network_sid_device.as_mut().unwrap().set_sampling_method(SamplingMethod::BEST);
-        self.network_sid_device.as_mut().unwrap().device_reset(0);
+        self.sid_device.as_mut().unwrap().set_sampling_method(self.device_number, SamplingMethod::BEST);
+        self.sid_device.as_mut().unwrap().device_reset(self.device_number);
         Ok(())
     }
 
@@ -479,43 +502,83 @@ impl Player {
             return Err(format!("Song number {} doesn't exist.", song_number + 1).to_string());
         }
 
-        self.network_sid_device.as_mut().unwrap().reset_all_buffers(0);
-        self.network_sid_device.as_mut().unwrap().reset_sid(0);
+        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+        self.sid_device.as_mut().unwrap().reset_sid(self.device_number);
         self.song_number = song_number;
 
         self.acid64_lib.set_song_to_play(self.c64_instance, song_number);
         Ok(())
     }
 
-    pub fn configure_sid_model(&mut self, number_of_sids: i32) -> Result<(), String> {
-        if self.device_number == -1 {
-            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance, 0);
-
-            if sid_model == SID_MODEL_8580 {
-                self.device_number = 1;
-            } else {
-                self.device_number = 0;
-            }
-        }
-
-        let device_count = self.network_sid_device.as_mut().unwrap().get_device_count();
-
-        if self.device_number + 1 > device_count {
-            return Err(format!("Device number {} doesn't exist, there are only {} devices.", self.device_number + 1, device_count));
-        }
-
+    pub fn configure_sid_model(&mut self, number_of_sids: i32) {
         for i in 0..number_of_sids {
-            self.network_sid_device.as_mut().unwrap().set_sid_model(i, self.device_number);
+            let device_number = self.device_numbers.get(i as usize).unwrap_or(&0);
+            self.sid_device.as_mut().unwrap().set_sid_model(*device_number, i);
         }
-        Ok(())
     }
 
     pub fn configure_sid_clock(&mut self) {
         let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
 
         match c64_model {
-            2 => self.network_sid_device.as_mut().unwrap().set_sid_clock(SidClock::NTSC),
-            _ => self.network_sid_device.as_mut().unwrap().set_sid_clock(SidClock::PAL)
+            2 => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::NTSC),
+            _ => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::PAL)
         }
+    }
+
+    fn get_valid_device_number(&mut self, device_number: i32) -> i32 {
+        if device_number == -1 {
+            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance, 0);
+
+            if sid_model == SID_MODEL_8580 {
+                1
+            } else {
+                0
+            }
+        } else {
+            device_number
+        }
+    }
+
+    fn fix_device_numbers(&mut self, number_of_sids: i32) -> Result<(), String> {
+        let mut device_number = 0;
+
+        for i in 0..number_of_sids {
+            device_number = match self.device_numbers.get(i as usize) {
+                Some(device_found) => {
+                    let device_found = *device_found;
+                    let device_number = self.get_valid_device_number(device_found as i32);
+                    let _ = std::mem::replace(&mut self.device_numbers[i as usize], device_number);
+                    device_number
+                }
+                None => {
+                    self.device_numbers.push(device_number);
+                    device_number
+                }
+            };
+
+        }
+
+        self.device_number = self.get_valid_device_number(self.device_number);
+        self.validate_device_numbers()
+    }
+
+    fn validate_device_numbers(&mut self) -> Result<(), String> {
+        let device_count = self.sid_device.as_mut().unwrap().get_device_count(self.device_number);
+
+        let mut prev_device = 0;
+        for i in 0..self.device_numbers.len() as i32 {
+            let device_number = self.device_numbers[i as usize];
+            if device_number + 1 > device_count {
+                return Err(format!("Device number {} doesn't exist, there are only {} devices.", device_number + 1, device_count));
+            }
+
+            if i > 0 && !self.sid_device.as_mut().unwrap().can_pair_devices(prev_device, device_number) {
+                return Err(format!("Device number {} can't be used together with device {}. Specify a different second device with option -dX,Y", prev_device + 1, device_number + 1));
+            }
+            prev_device = device_number;
+        }
+
+        Ok(())
     }
 }
