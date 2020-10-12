@@ -335,6 +335,8 @@ impl HardsidUsbDevice {
 
             // wait a few milliseconds to get it processed
             thread::sleep(time::Duration::from_millis(HSID_ABORT_PLAY_WAIT_MS));
+
+            self.reset_all_sids();
         }
     }
 
