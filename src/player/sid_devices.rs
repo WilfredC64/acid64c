@@ -174,15 +174,15 @@ impl SidDevices {
     }
 
     fn retrieve_device_info(&mut self, dev_nr: usize) {
-        let hs_device_count = self.sid_devices[dev_nr].get_device_count(0);
+        let device_count = self.sid_devices[dev_nr].get_device_count(0);
 
-        for i in 0..hs_device_count {
+        for i in 0..device_count {
             self.device_name.push(self.sid_devices[dev_nr].get_device_info(i));
             self.device_mapping_id.push(dev_nr as u8);
             self.device_offset.push(i as u8);
         }
 
-        self.device_count += hs_device_count;
+        self.device_count += device_count;
     }
 
     #[inline]
@@ -215,6 +215,16 @@ impl SidDevices {
     }
 
     pub fn is_connected(&mut self, dev_nr: i32) -> bool {
+        if dev_nr == -1 {
+            for i in 0..self.sid_devices.len() {
+                let connected = self.sid_devices[i].is_connected(0);
+                if connected {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
         self.sid_devices[mapped_dev_nr as usize].is_connected(mapped_sid_nr as i32)
@@ -227,9 +237,15 @@ impl SidDevices {
     }
 
     pub fn test_connection(&mut self, dev_nr: i32) {
-        let mapped_dev_nr = self.map_device(dev_nr);
-        let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].test_connection(mapped_sid_nr as i32);
+        if dev_nr == -1 {
+            for i in 0..self.sid_devices.len() {
+                self.sid_devices[i].test_connection(0);
+            }
+        } else {
+            let mapped_dev_nr = self.map_device(dev_nr);
+            let mapped_sid_nr = self.map_sid_offset(dev_nr);
+            self.sid_devices[mapped_dev_nr as usize].test_connection(mapped_sid_nr as i32);
+        }
     }
 
     pub fn can_pair_devices(&mut self, dev1: i32, dev2: i32) -> bool {

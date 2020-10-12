@@ -8,17 +8,15 @@ mod hardsid_usb_device;
 mod sid_device;
 mod sid_devices;
 
-use crate::utils::{hvsc, network};
-
-use self::acid64_library::Acid64Library;
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
+use crate::utils::{hvsc, network};
+use self::acid64_library::Acid64Library;
 use self::sid_device::{SidDevice, SidClock, SamplingMethod};
-use crate::player::sid_devices::{SidDevices, SidDevicesFacade};
+use self::sid_devices::{SidDevices, SidDevicesFacade};
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
 const NTSC_CYCLES_PER_SECOND: u32 = 263 * 65 * 60;
@@ -26,7 +24,7 @@ const NTSC_CYCLES_PER_SECOND: u32 = 263 * 65 * 60;
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT_NUMBER: &str = "6581";
 
-const MIN_CYCLE_SID_WRITE: u32 = 32;
+const MIN_CYCLE_SID_WRITE: u32 = 4;
 
 const SID_MODEL_8580: i32 = 2;
 
@@ -346,14 +344,13 @@ impl Player
     }
 
     pub fn load_file<S>(&mut self, filename: S) -> Result<(), String> where S: Into<String> {
-        self.init_devices()?;
-
         let filename = filename.into();
         let is_loaded = self.acid64_lib.load_file(self.c64_instance, filename.to_owned());
 
         if !is_loaded {
             Err(format!("File '{}' could not be loaded.", filename).to_string())
         } else {
+            self.init_devices()?;
             self.filename = Some(filename);
             self.configure_sid_device()?;
             self.set_song_to_play(-1)?;
