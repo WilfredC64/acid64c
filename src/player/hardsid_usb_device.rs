@@ -328,31 +328,33 @@ impl HardsidUsbDevice {
     }
 
     pub fn silent_all_sids(&mut self, _dev_nr: i32) {
-        for i in 0..self.device_mappings.len() { //i in 0..self.device_id.len() {
-            self.silent_sid(self.device_mappings[i]);
+        for i in 0..self.number_of_sids {
+            self.silent_sid(i);
         }
     }
 
     pub fn silent_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
-            self.write(dev_nr, 4, 0x01, 0);
-            self.write(dev_nr, 4, 0x00, 0);
-            self.write(dev_nr, 4, 0x08, 0);
-            self.write(dev_nr, 4, 0x07, 0);
-            self.write(dev_nr, 4, 0x0f, 0);
-            self.write(dev_nr, 4, 0x0e, 0);
+            let reg_base = self.device_base_reg[dev_nr as usize];
 
-            self.write(dev_nr, 4, 0x04, 0);
-            self.write(dev_nr, 4, 0x05, 0);
-            self.write(dev_nr, 4, 0x06, 0);
+            self.write(dev_nr, 4, reg_base + 0x01, 0);
+            self.write(dev_nr, 4, reg_base + 0x00, 0);
+            self.write(dev_nr, 4, reg_base + 0x08, 0);
+            self.write(dev_nr, 4, reg_base + 0x07, 0);
+            self.write(dev_nr, 4, reg_base + 0x0f, 0);
+            self.write(dev_nr, 4, reg_base + 0x0e, 0);
 
-            self.write(dev_nr, 4, 0x0b, 0);
-            self.write(dev_nr, 4, 0x0c, 0);
-            self.write(dev_nr, 4, 0x0d, 0);
+            self.write(dev_nr, 4, reg_base + 0x04, 0);
+            self.write(dev_nr, 4, reg_base + 0x05, 0);
+            self.write(dev_nr, 4, reg_base + 0x06, 0);
 
-            self.write(dev_nr, 4, 0x12, 0);
-            self.write(dev_nr, 4, 0x13, 0);
-            self.write(dev_nr, 4, 0x14, 0);
+            self.write(dev_nr, 4, reg_base + 0x0b, 0);
+            self.write(dev_nr, 4, reg_base + 0x0c, 0);
+            self.write(dev_nr, 4, reg_base + 0x0d, 0);
+
+            self.write(dev_nr, 4, reg_base + 0x12, 0);
+            self.write(dev_nr, 4, reg_base + 0x13, 0);
+            self.write(dev_nr, 4, reg_base + 0x14, 0);
 
             self.force_flush(dev_nr);
         }
@@ -363,46 +365,48 @@ impl HardsidUsbDevice {
     }
 
     pub fn reset_all_sids(&mut self) {
-        for i in 0..self.device_id.len() {
-            self.reset_sid(i as i32);
+        for i in 0..self.number_of_sids {
+            self.reset_sid(i);
         }
     }
 
     pub fn reset_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
-            self.write(dev_nr, 8, 0x04, 0);
-            self.write(dev_nr, 8, 0x0b, 0);
-            self.write(dev_nr, 8, 0x12, 0);
+            let reg_base = self.device_base_reg[dev_nr as usize];
 
-            self.write(dev_nr, 8, 0x00, 0);
-            self.write(dev_nr, 8, 0x01, 0);
-            self.write(dev_nr, 8, 0x07, 0);
-            self.write(dev_nr, 8, 0x08, 0);
-            self.write(dev_nr, 8, 0x0e, 0);
-            self.write(dev_nr, 8, 0x0f, 0);
+            self.write(dev_nr, 8, reg_base + 0x04, 0);
+            self.write(dev_nr, 8, reg_base + 0x0b, 0);
+            self.write(dev_nr, 8, reg_base + 0x12, 0);
 
-            self.reset_sid_register(dev_nr, 0x02);
-            self.reset_sid_register(dev_nr, 0x03);
-            self.reset_sid_register(dev_nr, 0x04);
-            self.reset_sid_register(dev_nr, 0x05);
-            self.reset_sid_register(dev_nr, 0x06);
+            self.write(dev_nr, 8, reg_base + 0x00, 0);
+            self.write(dev_nr, 8, reg_base + 0x01, 0);
+            self.write(dev_nr, 8, reg_base + 0x07, 0);
+            self.write(dev_nr, 8, reg_base + 0x08, 0);
+            self.write(dev_nr, 8, reg_base + 0x0e, 0);
+            self.write(dev_nr, 8, reg_base + 0x0f, 0);
 
-            self.reset_sid_register(dev_nr, 0x09);
-            self.reset_sid_register(dev_nr, 0x0a);
-            self.reset_sid_register(dev_nr, 0x0b);
-            self.reset_sid_register(dev_nr, 0x0c);
-            self.reset_sid_register(dev_nr, 0x0d);
+            self.reset_sid_register(dev_nr, reg_base + 0x02);
+            self.reset_sid_register(dev_nr, reg_base + 0x03);
+            self.reset_sid_register(dev_nr, reg_base + 0x04);
+            self.reset_sid_register(dev_nr, reg_base + 0x05);
+            self.reset_sid_register(dev_nr, reg_base + 0x06);
 
-            self.reset_sid_register(dev_nr, 0x10);
-            self.reset_sid_register(dev_nr, 0x11);
-            self.reset_sid_register(dev_nr, 0x12);
-            self.reset_sid_register(dev_nr, 0x13);
-            self.reset_sid_register(dev_nr, 0x14);
+            self.reset_sid_register(dev_nr, reg_base + 0x09);
+            self.reset_sid_register(dev_nr, reg_base + 0x0a);
+            self.reset_sid_register(dev_nr, reg_base + 0x0b);
+            self.reset_sid_register(dev_nr, reg_base + 0x0c);
+            self.reset_sid_register(dev_nr, reg_base + 0x0d);
 
-            self.reset_sid_register(dev_nr, 0x15);
-            self.reset_sid_register(dev_nr, 0x16);
-            self.reset_sid_register(dev_nr, 0x17);
-            self.reset_sid_register(dev_nr, 0x19);
+            self.reset_sid_register(dev_nr, reg_base + 0x10);
+            self.reset_sid_register(dev_nr, reg_base + 0x11);
+            self.reset_sid_register(dev_nr, reg_base + 0x12);
+            self.reset_sid_register(dev_nr, reg_base + 0x13);
+            self.reset_sid_register(dev_nr, reg_base + 0x14);
+
+            self.reset_sid_register(dev_nr, reg_base + 0x15);
+            self.reset_sid_register(dev_nr, reg_base + 0x16);
+            self.reset_sid_register(dev_nr, reg_base + 0x17);
+            self.reset_sid_register(dev_nr, reg_base + 0x19);
 
             self.dummy_write(dev_nr, 40000);
             self.force_flush(dev_nr);
@@ -543,7 +547,6 @@ impl HardsidUsbDevice {
     fn try_write_sync(&mut self, dev_nr: i32, reg: u8, data: u8) {
         if self.is_connected() {
             let physical_dev_nr = self.device_id[dev_nr as usize];
-
             let (dev_nr, reg) = self.convert_device_info(reg);
             let base_reg = self.device_base_reg[dev_nr as usize];
 
