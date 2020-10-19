@@ -84,7 +84,7 @@ impl HardSidUsb {
         }
     }
 
-    // aborts the playback ASAP, wait ~20ms before sending new data to the queue
+    // aborts the playback ASAP
     pub fn abort_play(&self, dev_id: u8) {
         unsafe {
             (self.hs4u_lib.get(b"hardsid_usb_abortplay").unwrap() as Symbol<unsafe extern "stdcall" fn(u8)>)(dev_id)

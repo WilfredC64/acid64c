@@ -2,20 +2,20 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod acid64_library;
-mod network_sid_device;
 mod hardsid_usb;
 mod hardsid_usb_device;
+mod network_sid_device;
 mod sid_device;
 mod sid_devices;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{Ordering, AtomicI32};
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 use crate::utils::{hvsc, network};
 use self::acid64_library::Acid64Library;
-use self::sid_device::{SidDevice, SidClock, SamplingMethod};
+use self::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
 use self::sid_devices::{SidDevices, SidDevicesFacade};
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
@@ -27,6 +27,13 @@ const DEFAULT_PORT_NUMBER: &str = "6581";
 const MIN_CYCLE_SID_WRITE: u32 = 4;
 
 const SID_MODEL_8580: i32 = 2;
+
+const PAUSE_SLEEP_MS: u64 = 10;
+
+pub const ABORT_NO: AbortType = 0;
+pub const ABORT_TO_QUIT: AbortType = 1;
+pub const ABORT_FOR_COMMAND: AbortType = 2;
+pub type AbortType = i32;
 
 #[allow(dead_code)]
 pub enum PlayerCommand {
@@ -73,7 +80,7 @@ pub struct Player {
     song_number: i32,
     host_name: String,
     port: String,
-    aborted: Arc<AtomicBool>,
+    abort_type: Arc<AtomicI32>,
     cmd_sender: SyncSender<PlayerCommand>,
     cmd_receiver: Receiver<PlayerCommand>,
     paused: bool,
@@ -105,7 +112,7 @@ impl Player
             song_number: 0,
             host_name: DEFAULT_HOST.to_string(),
             port: DEFAULT_PORT_NUMBER.to_string(),
-            aborted: Arc::new(AtomicBool::new(false)),
+            abort_type: Arc::new(AtomicI32::new(ABORT_NO)),
             cmd_sender,
             cmd_receiver,
             paused: false,
@@ -144,8 +151,8 @@ impl Player
         self.acid64_lib.get_version()
     }
 
-    pub fn get_aborted_ref(&mut self) -> Arc<AtomicBool> {
-        Arc::clone(&self.aborted)
+    pub fn get_aborted_ref(&mut self) -> Arc<AtomicI32> {
+        Arc::clone(&self.abort_type)
     }
 
     pub fn play(&mut self) {
@@ -156,18 +163,25 @@ impl Player
 
         self.sid_written = false;
         self.paused = false;
-        self.aborted.store(false, Ordering::SeqCst);
+        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
-        while !self.is_aborted() {
+        let mut device_state = DeviceResponse::Ok;
+
+        while !self.should_quit() {
             self.process_player_commands();
 
             if self.paused {
-                thread::sleep(time::Duration::from_millis(20));
+                thread::sleep(time::Duration::from_millis(PAUSE_SLEEP_MS));
                 continue;
             }
 
             if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
                 break;
+            }
+
+            if device_state == DeviceResponse::Busy {
+                device_state = self.sid_device.as_mut().unwrap().retry_write(self.device_number);
+                continue;
             }
 
             self.acid64_lib.run(self.c64_instance);
@@ -178,7 +192,7 @@ impl Player
                     delay_cycles += self.acid64_lib.get_cycles(self.c64_instance) as u32;
                 },
                 SidCommand::Write => {
-                    let _ = self.process_sid_write(delay_cycles);
+                    device_state = self.process_sid_write(delay_cycles);
                     delay_cycles = 0;
                     idle_count = 0;
                 },
@@ -199,16 +213,21 @@ impl Player
             }
         };
 
-        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
+        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
-        self.aborted.store(true, Ordering::SeqCst);
+        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+        self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number);
+
+        self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
     }
 
+    #[inline]
     fn process_player_commands(&mut self) {
         let recv_result = self.cmd_receiver.try_recv();
 
         if recv_result.is_ok() {
+            self.abort_type.store(ABORT_NO, Ordering::SeqCst);
+
             match recv_result.unwrap() {
                 PlayerCommand::Play => {
                     if self.paused {
@@ -217,7 +236,9 @@ impl Player
                     self.paused = false;
                 },
                 PlayerCommand::Pause => {
-                    self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+                    let device = self.sid_device.as_mut().unwrap();
+                    device.reset_all_buffers(self.device_number);
+                    device.silent_all_sids(self.device_number);
                     self.paused = true;
                 },
                 _ => ()
@@ -251,7 +272,7 @@ impl Player
         device_names.clone_from(&new_device_names);
     }
 
-    pub fn get_cycles_per_second(&mut self) -> u32 {
+    fn get_cycles_per_second(&mut self) -> u32 {
         let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
 
         match c64_model {
@@ -333,7 +354,7 @@ impl Player
                 return Err(format!("{} is not in the local network or invalid.", self.host_name));
             }
 
-            let mut devices = SidDevices::new(Arc::clone(&self.aborted));
+            let mut devices = SidDevices::new(Arc::clone(&self.abort_type));
             devices.connect(&self.host_name, &self.port)?;
             let sid_device = SidDevicesFacade{ devices };
             self.sid_device = Some(Box::new(sid_device));
@@ -350,13 +371,13 @@ impl Player
         if !is_loaded {
             Err(format!("File '{}' could not be loaded.", filename).to_string())
         } else {
-            self.init_devices()?;
             self.filename = Some(filename);
-            self.configure_sid_device()?;
-            self.set_song_to_play(-1)?;
             self.acid64_lib.skip_silence(self.c64_instance, true);
             self.acid64_lib.enable_volume_fix(self.c64_instance, true);
-            Ok(())
+
+            self.init_devices()?;
+            self.configure_sid_device()?;
+            self.set_song_to_play(-1)
         }
     }
 
@@ -365,25 +386,24 @@ impl Player
     }
 
     #[inline]
-    fn is_aborted(&self) -> bool {
-        self.aborted.load(Ordering::SeqCst)
+    fn should_quit(&self) -> bool {
+        let abort_type = self.abort_type.load(Ordering::SeqCst);
+        abort_type == ABORT_TO_QUIT
     }
 
     #[inline]
-    fn process_sid_write(&mut self, delay_cycles: u32) -> u32 {
+    fn process_sid_write(&mut self, delay_cycles: u32) -> DeviceResponse {
         let cycles = delay_cycles + self.acid64_lib.get_cycles(self.c64_instance) as u32;
         let register = self.acid64_lib.get_register(self.c64_instance);
         let data = self.acid64_lib.get_data(self.c64_instance);
 
-        self.write_to_sid(self.device_number, cycles, register, data);
-
         self.last_sid_write[register as usize] = data;
-        cycles
+        self.write_to_sid(self.device_number, cycles, register, data)
     }
 
     #[inline]
-    fn write_to_sid(&mut self, device_number: i32, cycles: u32, reg: u8, data: u8) {
-        self.sid_device.as_mut().unwrap().write(device_number, cycles, reg, data);
+    fn write_to_sid(&mut self, device_number: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.sid_device.as_mut().unwrap().try_write(device_number, cycles, reg, data)
     }
 
     #[inline]
@@ -463,7 +483,8 @@ impl Player
 
         self.configure_sid_model(number_of_sids);
         self.configure_sid_clock();
-        self.sid_device.as_mut().unwrap().set_sampling_method(self.device_number, SamplingMethod::BEST);
+
+        self.sid_device.as_mut().unwrap().set_sampling_method(self.device_number, SamplingMethod::Best);
         self.sid_device.as_mut().unwrap().device_reset(self.device_number);
         Ok(())
     }
@@ -518,8 +539,8 @@ impl Player
         let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
 
         match c64_model {
-            2 => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::NTSC),
-            _ => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::PAL)
+            2 => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::Ntsc),
+            _ => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::Pal)
         }
     }
 

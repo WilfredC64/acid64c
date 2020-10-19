@@ -4,10 +4,11 @@
 use std::cmp::{min, max};
 use std::io::prelude::*;
 use std::net::{TcpStream, Shutdown};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
 
-use super::sid_device::{SidDevice, SidClock, SamplingMethod};
+use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
+use super::ABORT_NO;
 
 const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
 const RESPONSE_BUFFER_SIZE: usize = 260;
@@ -121,6 +122,14 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.set_fade_out(time_millis);
     }
 
+    fn silent_all_sids(&mut self, dev_nr: i32) {
+        self.ns_device.silent_all_sids(dev_nr);
+    }
+
+    fn silent_sid(&mut self, dev_nr: i32) {
+        self.ns_device.silent_sid(dev_nr);
+    }
+
     fn device_reset(&mut self, _dev_nr: i32) {
         self.ns_device.device_reset(0);
     }
@@ -153,6 +162,14 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.write(0, cycles_input, reg, data);
     }
 
+    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.ns_device.try_write(dev_nr, cycles_input, reg, data)
+    }
+
+    fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
+        self.ns_device.retry_write(dev_nr)
+    }
+
     fn force_flush(&mut self, _dev_nr: i32) {
         self.ns_device.force_flush(0);
     }
@@ -172,12 +189,12 @@ pub struct NetworkSidDevice {
     sampling_method: SamplingMethod,
     turbo_mode: bool,
     last_error: Option<String>,
-    aborted: Arc<AtomicBool>
+    abort_type: Arc<AtomicI32>
 }
 
 #[allow(dead_code)]
 impl NetworkSidDevice {
-    pub fn new(aborted: Arc<AtomicBool>) -> NetworkSidDevice {
+    pub fn new(abort_type: Arc<AtomicI32>) -> NetworkSidDevice {
         NetworkSidDevice {
             sid_device: None,
             interface_version: 0,
@@ -187,12 +204,12 @@ impl NetworkSidDevice {
             buffer_cycles: 0,
             device_count: 0,
             number_of_sids: 0,
-            sid_clock: SidClock::PAL,
+            sid_clock: SidClock::Pal,
             sid_model: 0,
-            sampling_method: SamplingMethod::BEST,
+            sampling_method: SamplingMethod::Best,
             turbo_mode: false,
             last_error: None,
-            aborted
+            abort_type
         }
     }
 
@@ -231,9 +248,9 @@ impl NetworkSidDevice {
         self.device_count = 0;
         self.interface_version = 0;
         self.number_of_sids = 0;
-        self.sid_clock = SidClock::PAL;
+        self.sid_clock = SidClock::Pal;
         self.sid_model = 0;
-        self.sampling_method = SamplingMethod::BEST;
+        self.sampling_method = SamplingMethod::Best;
         self.reset_buffer();
     }
 
@@ -363,6 +380,37 @@ impl NetworkSidDevice {
         }
     }
 
+    pub fn silent_all_sids(&mut self, _dev_nr: i32) {
+        for i in 0..self.number_of_sids {
+            self.silent_sid(i as i32);
+        }
+    }
+
+    pub fn silent_sid(&mut self, dev_nr: i32) {
+        if self.number_of_sids > 0 {
+            let dev_nr = self.convert_device_number(dev_nr);
+            self.write(dev_nr, 8, 0x00, 0);
+            self.write(dev_nr, 8, 0x01, 0);
+            self.write(dev_nr, 8, 0x07, 0);
+            self.write(dev_nr, 8, 0x08, 0);
+            self.write(dev_nr, 8, 0x0e, 0);
+            self.write(dev_nr, 8, 0x0f, 0);
+
+            self.write(dev_nr, 8, 0x04, 0);
+            self.write(dev_nr, 8, 0x0b, 0);
+            self.write(dev_nr, 8, 0x12, 0);
+
+            self.write(dev_nr, 8, 0x05, 0);
+            self.write(dev_nr, 8, 0x06, 0);
+            self.write(dev_nr, 8, 0x0c, 0);
+            self.write(dev_nr, 8, 0x0d, 0);
+            self.write(dev_nr, 8, 0x13, 0);
+            self.write(dev_nr, 8, 0x14, 0);
+
+            self.force_flush(dev_nr);
+        }
+    }
+
     pub fn device_reset(&mut self, dev_nr: i32) {
         let default_volume = 0x0f;
         let dev_nr = self.convert_device_number(dev_nr);
@@ -453,17 +501,65 @@ impl NetworkSidDevice {
     }
 
     pub fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
-        let cycles = if cycles_input > 0xffff {
-            let dev_nr = self.convert_device_number(dev_nr);
-            self.delay(dev_nr, cycles_input, 0x100)
-        } else {
-            cycles_input
-        };
-
+        let cycles = self.do_delay(dev_nr, cycles_input);
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
             self.force_flush(dev_nr);
+        }
+    }
+
+    pub fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
+        let cycles = self.do_delay(dev_nr, cycles_input);
+        self.add_to_buffer(reg, data, cycles);
+
+        if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
+            let dev_nr = self.convert_device_number(dev_nr);
+            // self.try_flush_buffer(Command::TryWrite, dev_nr, None);
+            // DeviceResponse::Ok
+            self.try_write_buffer(Command::TryWrite, dev_nr, None)
+        } else {
+            DeviceResponse::Ok
+        }
+    }
+
+    pub fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
+        self.try_write_buffer(Command::TryWrite, dev_nr, None)
+    }
+
+    #[inline]
+    fn do_delay(&mut self, dev_nr: i32, cycles_input: u32) -> u32 {
+        if cycles_input > 0xffff {
+            let dev_nr = self.convert_device_number(dev_nr);
+            self.delay(dev_nr, cycles_input, 0x100)
+        } else {
+            cycles_input
+        }
+    }
+
+    fn try_write_buffer(&mut self, command: Command, dev_nr: i32, arguments: Option<&[u8]>) -> DeviceResponse {
+        if self.is_connected() {
+            self.set_command(command, dev_nr as u8, arguments);
+
+            let cycles_sent_to_server = self.buffer_cycles;
+            let (device_state, _) = self.flush_buffer();
+
+            match device_state {
+                CommandResponse::Ok => {
+                    if cycles_sent_to_server > CLIENT_WAIT_CYCLES_THRESHOLD {
+                        thread::sleep(time::Duration::from_millis(5));
+                    }
+                    DeviceResponse::Ok
+                },
+                CommandResponse::Busy => {
+                    thread::sleep(time::Duration::from_millis(5));
+                    DeviceResponse::Busy
+                },
+                CommandResponse::Error => DeviceResponse::Error,
+                _ => DeviceResponse::Ok
+            }
+        } else {
+            DeviceResponse::Ok
         }
     }
 
@@ -594,7 +690,8 @@ impl NetworkSidDevice {
 
     #[inline]
     fn is_aborted(&self) -> bool {
-        self.aborted.load(Ordering::SeqCst)
+        let abort_type = self.abort_type.load(Ordering::SeqCst);
+        abort_type != ABORT_NO
     }
 
     #[inline]

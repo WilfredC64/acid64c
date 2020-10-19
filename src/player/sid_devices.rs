@@ -1,13 +1,12 @@
 // Copyright (C) 2020 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use super::sid_device::{SidDevice, SidClock, SamplingMethod};
-
-use std::sync::atomic::{AtomicBool};
-use std::sync::Arc;
-
+use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
 use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
 use super::network_sid_device::{NetworkSidDevice, NetworkSidDeviceFacade};
+
+use std::sync::atomic::AtomicI32;
+use std::sync::Arc;
 
 pub struct SidDevicesFacade {
     pub devices: SidDevices
@@ -74,6 +73,14 @@ impl SidDevice for SidDevicesFacade {
         self.devices.set_fade_out(dev_nr, time_millis);
     }
 
+    fn silent_all_sids(&mut self, dev_nr: i32) {
+        self.devices.silent_all_sids(dev_nr);
+    }
+
+    fn silent_sid(&mut self, dev_nr: i32) {
+        self.devices.silent_sid(dev_nr);
+    }
+
     fn device_reset(&mut self, dev_nr: i32) {
         self.devices.device_reset(dev_nr);
     }
@@ -106,6 +113,14 @@ impl SidDevice for SidDevicesFacade {
         self.devices.write(dev_nr, cycles_input, reg, data);
     }
 
+    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.devices.try_write(dev_nr, cycles_input, reg, data)
+    }
+
+    fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
+        self.devices.retry_write(dev_nr)
+    }
+
     fn force_flush(&mut self, dev_nr: i32) {
         self.devices.force_flush(dev_nr);
     }
@@ -117,19 +132,19 @@ pub struct SidDevices {
     device_name: Vec<String>,
     device_mapping_id: Vec<u8>,
     device_offset: Vec<u8>,
-    aborted: Arc<AtomicBool>,
+    abort_type: Arc<AtomicI32>,
 }
 
 #[allow(dead_code)]
 impl SidDevices {
-    pub fn new(aborted: Arc<AtomicBool>) -> SidDevices {
+    pub fn new(abort_type: Arc<AtomicI32>) -> SidDevices {
         SidDevices {
             sid_devices: vec![],
             device_count: 0,
             device_name: vec![],
             device_mapping_id: vec![],
             device_offset: vec![],
-            aborted,
+            abort_type,
         }
     }
 
@@ -146,7 +161,7 @@ impl SidDevices {
     }
 
     fn try_connect_hardsid_device(&mut self) -> Result<(), String> {
-        let mut hs_device = HardsidUsbDevice::new(Arc::clone(&self.aborted));
+        let mut hs_device = HardsidUsbDevice::new(Arc::clone(&self.abort_type));
         let hs_connect_result = hs_device.connect();
         if hs_connect_result.is_ok() {
             let hs_facade = HardsidUsbDeviceFacade { hs_device };
@@ -160,7 +175,7 @@ impl SidDevices {
     }
 
     fn try_connect_network_device(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
-        let mut ns_device = NetworkSidDevice::new(Arc::clone(&self.aborted));
+        let mut ns_device = NetworkSidDevice::new(Arc::clone(&self.abort_type));
         let ns_connect_result = ns_device.connect(ip_address, port);
         if ns_connect_result.is_ok() {
             let ns_facade = NetworkSidDeviceFacade { ns_device };
@@ -317,6 +332,18 @@ impl SidDevices {
         self.sid_devices[mapped_dev_nr as usize].set_fade_out(mapped_sid_nr as i32, time_millis);
     }
 
+    pub fn silent_all_sids(&mut self, dev_nr: i32) {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].silent_all_sids(mapped_sid_nr as i32);
+    }
+
+    pub fn silent_sid(&mut self, dev_nr: i32) {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].silent_sid(mapped_sid_nr as i32);
+    }
+
     pub fn device_reset(&mut self, dev_nr: i32) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
@@ -363,6 +390,18 @@ impl SidDevices {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
         self.sid_devices[mapped_dev_nr as usize].write(mapped_sid_nr as i32, cycles_input, reg, data);
+    }
+
+    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].try_write(mapped_sid_nr as i32, cycles_input, reg, data)
+    }
+
+    fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].retry_write(mapped_sid_nr as i32)
     }
 
     pub fn force_flush(&mut self, dev_nr: i32) {

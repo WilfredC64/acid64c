@@ -3,12 +3,12 @@
 
 mod clock;
 
-use crate::player::{Player, PlayerCommand};
+use crate::player::{Player, PlayerCommand, ABORT_NO, ABORT_TO_QUIT, ABORT_FOR_COMMAND};
 use crate::utils::keyboard;
 use self::clock::Clock;
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
@@ -20,21 +20,21 @@ pub struct ConsolePlayer {
     player_cmd_sender: SyncSender<PlayerCommand>,
     display_stil: bool,
     paused: bool,
-    aborted: Arc<AtomicBool>
+    abort_type: Arc<AtomicI32>
 }
 
 impl ConsolePlayer {
     pub fn new(player: Player, display_stil: bool) -> ConsolePlayer {
         let player_cmd_sender = player.get_channel_sender();
         let player_arc = Arc::new(Mutex::new(player));
-        let aborted = player_arc.lock().unwrap().get_aborted_ref();
+        let abort_type = player_arc.lock().unwrap().get_aborted_ref();
 
         ConsolePlayer {
             player: player_arc,
             player_cmd_sender,
             display_stil,
             paused: false,
-            aborted
+            abort_type
         }
     }
 
@@ -108,14 +108,14 @@ impl ConsolePlayer {
 
     #[inline]
     fn stop_player(&mut self, player_thread: thread::JoinHandle<()>) {
-        self.aborted.store(true, Ordering::SeqCst);
+        self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
         let _ = player_thread.join();
-        self.aborted.store(false, Ordering::SeqCst);
+        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
     }
 
     #[inline]
     fn start_player(&mut self) -> thread::JoinHandle<()> {
-        self.aborted.store(false, Ordering::SeqCst);
+        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
         let player_clone = Arc::clone(&self.player);
         let player_thread = thread::spawn(move || {
@@ -126,7 +126,8 @@ impl ConsolePlayer {
 
     #[inline]
     fn is_aborted(&self) -> bool {
-        self.aborted.load(Ordering::SeqCst)
+        let abort_type = self.abort_type.load(Ordering::SeqCst);
+        abort_type != ABORT_NO
     }
 
     fn refresh_info(&mut self, clock: &mut Clock) {
@@ -140,7 +141,9 @@ impl ConsolePlayer {
 
     #[inline]
     fn send_command(&mut self, command: PlayerCommand) {
+        self.abort_type.store(ABORT_FOR_COMMAND, Ordering::SeqCst);
         let _ = self.player_cmd_sender.send(command);
+        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
     }
 
     fn convert_song_length(song_length: i32) -> String {

@@ -1,17 +1,27 @@
 // Copyright (C) 2020 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
+#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum SidClock {
-    PAL = 0,
-    NTSC = 1
+    Pal = 0,
+    Ntsc = 1,
+    OneMhz = 2
 }
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum SamplingMethod {
-    BEST = 0,
-    FAST = 1
+    Best = 0,
+    Fast = 1
+}
+
+#[allow(dead_code)]
+#[derive(Copy, Clone, PartialEq)]
+pub enum DeviceResponse {
+    Ok = 0,
+    Busy = 1,
+    Error = 2
 }
 
 pub trait SidDevice {
@@ -45,6 +55,10 @@ pub trait SidDevice {
 
     fn set_fade_out(&mut self, dev_nr: i32, time_millis: u32);
 
+    fn silent_all_sids(&mut self, dev_nr: i32);
+
+    fn silent_sid(&mut self, dev_nr: i32);
+
     fn device_reset(&mut self, dev_nr: i32);
 
     fn reset_all_sids(&mut self, dev_nr: i32);
@@ -60,6 +74,10 @@ pub trait SidDevice {
     fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32);
 
     fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8);
+
+    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse;
+
+    fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse;
 
     fn force_flush(&mut self, dev_nr: i32);
 }
