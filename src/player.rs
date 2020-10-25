@@ -33,6 +33,8 @@ const PAUSE_SLEEP_MS: u64 = 10;
 pub const ABORT_NO: AbortType = 0;
 pub const ABORT_TO_QUIT: AbortType = 1;
 pub const ABORT_FOR_COMMAND: AbortType = 2;
+pub const ABORTING: AbortType = 3;
+pub const ABORTED: AbortType = 4;
 pub type AbortType = i32;
 
 #[allow(dead_code)]
@@ -213,7 +215,7 @@ impl Player
             }
         };
 
-        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
+        self.abort_type.store(ABORTING, Ordering::SeqCst);
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
         self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number);

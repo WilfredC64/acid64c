@@ -8,7 +8,7 @@ use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
 
 use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
-use super::ABORT_NO;
+use super::{ABORT_NO, ABORTING};
 
 const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
 const RESPONSE_BUFFER_SIZE: usize = 260;
@@ -135,7 +135,7 @@ impl SidDevice for NetworkSidDeviceFacade {
     }
 
     fn reset_all_sids(&mut self, _dev_nr: i32) {
-        self.ns_device.reset_all_sids();
+        // not supported
     }
 
     fn reset_sid(&mut self, _dev_nr: i32) {
@@ -163,11 +163,11 @@ impl SidDevice for NetworkSidDeviceFacade {
     }
 
     fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
-        self.ns_device.try_write(dev_nr, cycles_input, reg, data)
+        self.ns_device.try_write(0, cycles_input, reg, data)
     }
 
     fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
-        self.ns_device.retry_write(dev_nr)
+        self.ns_device.retry_write(0)
     }
 
     fn force_flush(&mut self, _dev_nr: i32) {
@@ -421,10 +421,6 @@ impl NetworkSidDevice {
         self.unmute(dev_nr, 3);
     }
 
-    pub fn reset_all_sids(&mut self) {
-        // not implemented
-    }
-
     fn unmute(&mut self, dev_nr: i32, voice_number: i32) {
         if !(voice_number == 3 && self.interface_version < 3) {
             let dev_nr = self.convert_device_number(dev_nr);
@@ -515,8 +511,6 @@ impl NetworkSidDevice {
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
             let dev_nr = self.convert_device_number(dev_nr);
-            // self.try_flush_buffer(Command::TryWrite, dev_nr, None);
-            // DeviceResponse::Ok
             self.try_write_buffer(Command::TryWrite, dev_nr, None)
         } else {
             DeviceResponse::Ok
@@ -691,7 +685,7 @@ impl NetworkSidDevice {
     #[inline]
     fn is_aborted(&self) -> bool {
         let abort_type = self.abort_type.load(Ordering::SeqCst);
-        abort_type != ABORT_NO
+        abort_type != ABORT_NO && abort_type != ABORTING
     }
 
     #[inline]
