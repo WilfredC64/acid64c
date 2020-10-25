@@ -220,7 +220,7 @@ impl Player
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
         self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number);
 
-        self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
+        self.abort_type.store(ABORTED, Ordering::SeqCst);
     }
 
     #[inline]

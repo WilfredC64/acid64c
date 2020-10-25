@@ -162,11 +162,11 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.write(0, cycles_input, reg, data);
     }
 
-    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
+    fn try_write(&mut self, _dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
         self.ns_device.try_write(0, cycles_input, reg, data)
     }
 
-    fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
+    fn retry_write(&mut self, _dev_nr: i32) -> DeviceResponse {
         self.ns_device.retry_write(0)
     }
 
