@@ -68,6 +68,9 @@ fn run() -> Result<(), String> {
 
     for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with("-")) {
         match &argument[1..2] {
+            "c" => {
+                player.set_adjust_clock(true);
+            },
             "d" => device_numbers = parse_argument_numbers("Device number", &argument[2..])?,
             "h" => {
                 let host_name = argument.chars().skip(2).collect();
@@ -111,6 +114,7 @@ fn print_usage() {
     println!("ACID64 Console v1.04 - Copyright (c) 2003-2020 Wilfred Bos");
     println!("\nUsage: acid64c <options> <file_name>");
     println!("\n<Options>");
+    println!("  -c: adjust clock for devices that don't support PAL/NTSC clock");
     println!("  -d{{device_number,n}}: set device numbers (1..n) for each SID chip, default is 1");
     println!("  -h{{host_name}}: host name or ip of network sid device, default is localhost");
     println!("  -i: display STIL info if present");

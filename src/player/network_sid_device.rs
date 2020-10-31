@@ -173,6 +173,14 @@ impl SidDevice for NetworkSidDeviceFacade {
     fn force_flush(&mut self, _dev_nr: i32) {
         self.ns_device.force_flush(0);
     }
+
+    fn set_native_device_clock(&mut self, _enabled: bool) {
+        // not supported
+    }
+
+    fn get_device_clock(&mut self, _dev_nr: i32) -> SidClock {
+        self.ns_device.get_device_clock()
+    }
 }
 
 pub struct NetworkSidDevice {
@@ -560,6 +568,10 @@ impl NetworkSidDevice {
     pub fn force_flush(&mut self, dev_nr: i32) {
         let dev_nr = self.convert_device_number(dev_nr);
         self.try_flush_buffer(Command::TryWrite, dev_nr, None);
+    }
+
+    pub fn get_device_clock(&mut self) -> SidClock {
+        self.sid_clock
     }
 
     #[inline]

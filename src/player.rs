@@ -88,7 +88,8 @@ pub struct Player {
     paused: bool,
     sid_written: bool,
     last_sid_write: [u8; 256],
-    device_names: Arc<Mutex<Vec<String>>>
+    device_names: Arc<Mutex<Vec<String>>>,
+    adjust_clock: bool
 }
 
 impl Drop for Player {
@@ -121,6 +122,7 @@ impl Player
             sid_written: false,
             last_sid_write: [0; 256],
             device_names: Arc::new(Mutex::new(Vec::new())),
+            adjust_clock: false
         };
 
         player_properties.setup_c64_instance();
@@ -350,6 +352,10 @@ impl Player
         Ok(())
     }
 
+    pub fn set_adjust_clock(&mut self, adjust_clock: bool) {
+        self.adjust_clock = adjust_clock;
+    }
+
     pub fn init_devices(&mut self) -> Result<(), String> {
         if self.sid_device.is_none() {
             if !network::is_local_ip_address(&self.host_name) {
@@ -358,6 +364,8 @@ impl Player
 
             let mut devices = SidDevices::new(Arc::clone(&self.abort_type));
             devices.connect(&self.host_name, &self.port)?;
+            devices.set_native_device_clock(!self.adjust_clock);
+
             let sid_device = SidDevicesFacade{ devices };
             self.sid_device = Some(Box::new(sid_device));
 

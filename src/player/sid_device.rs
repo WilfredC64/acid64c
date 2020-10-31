@@ -2,7 +2,7 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #[allow(dead_code)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum SidClock {
     Pal = 0,
     Ntsc = 1,
@@ -80,4 +80,8 @@ pub trait SidDevice {
     fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse;
 
     fn force_flush(&mut self, dev_nr: i32);
+
+    fn set_native_device_clock(&mut self, enabled: bool);
+
+    fn get_device_clock(&mut self, dev_nr: i32) -> SidClock;
 }

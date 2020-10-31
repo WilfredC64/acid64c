@@ -124,6 +124,14 @@ impl SidDevice for SidDevicesFacade {
     fn force_flush(&mut self, dev_nr: i32) {
         self.devices.force_flush(dev_nr);
     }
+
+    fn set_native_device_clock(&mut self, enabled: bool) {
+        self.devices.set_native_device_clock(enabled);
+    }
+
+    fn get_device_clock(&mut self, dev_nr: i32) -> SidClock {
+        self.devices.get_device_clock(dev_nr)
+    }
 }
 
 pub struct SidDevices {
@@ -408,5 +416,17 @@ impl SidDevices {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
         self.sid_devices[mapped_dev_nr as usize].force_flush(mapped_sid_nr as i32);
+    }
+
+    pub fn set_native_device_clock(&mut self, enabled: bool) {
+        for i in 0..self.sid_devices.len() {
+            self.sid_devices[i].set_native_device_clock(enabled);
+        }
+    }
+
+    pub fn get_device_clock(&mut self, dev_nr: i32) -> SidClock {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].get_device_clock(mapped_sid_nr as i32)
     }
 }
