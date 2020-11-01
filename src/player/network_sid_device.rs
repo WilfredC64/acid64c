@@ -122,12 +122,12 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.set_fade_out(time_millis);
     }
 
-    fn silent_all_sids(&mut self, dev_nr: i32) {
-        self.ns_device.silent_all_sids(dev_nr);
+    fn silent_all_sids(&mut self, _dev_nr: i32, write_volume: bool) {
+        self.ns_device.silent_all_sids(write_volume);
     }
 
-    fn silent_sid(&mut self, dev_nr: i32) {
-        self.ns_device.silent_sid(dev_nr);
+    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
+        self.ns_device.silent_sid(dev_nr, write_volume);
     }
 
     fn device_reset(&mut self, _dev_nr: i32) {
@@ -135,7 +135,7 @@ impl SidDevice for NetworkSidDeviceFacade {
     }
 
     fn reset_all_sids(&mut self, _dev_nr: i32) {
-        // not supported
+        self.ns_device.reset_all_sids();
     }
 
     fn reset_sid(&mut self, _dev_nr: i32) {
@@ -388,13 +388,13 @@ impl NetworkSidDevice {
         }
     }
 
-    pub fn silent_all_sids(&mut self, _dev_nr: i32) {
+    pub fn silent_all_sids(&mut self, write_volume: bool) {
         for i in 0..self.number_of_sids {
-            self.silent_sid(i as i32);
+            self.silent_sid(i as i32, write_volume);
         }
     }
 
-    pub fn silent_sid(&mut self, dev_nr: i32) {
+    pub fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
         if self.number_of_sids > 0 {
             let dev_nr = self.convert_device_number(dev_nr);
             self.write(dev_nr, 8, 0x00, 0);
@@ -414,6 +414,10 @@ impl NetworkSidDevice {
             self.write(dev_nr, 8, 0x0d, 0);
             self.write(dev_nr, 8, 0x13, 0);
             self.write(dev_nr, 8, 0x14, 0);
+
+            if write_volume {
+                self.write(dev_nr, 8, 0x18, 0);
+            }
 
             self.force_flush(dev_nr);
         }
@@ -436,8 +440,16 @@ impl NetworkSidDevice {
         }
     }
 
+    pub fn reset_all_sids(&mut self) {
+        for i in 0..self.number_of_sids {
+            self.reset_sid(i);
+        }
+    }
+
     pub fn reset_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
+            let dev_nr = self.convert_device_number(dev_nr);
+
             self.write(dev_nr, 8, 0x04, 0);
             self.write(dev_nr, 8, 0x0b, 0);
             self.write(dev_nr, 8, 0x12, 0);

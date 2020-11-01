@@ -55,9 +55,9 @@ pub trait SidDevice {
 
     fn set_fade_out(&mut self, dev_nr: i32, time_millis: u32);
 
-    fn silent_all_sids(&mut self, dev_nr: i32);
+    fn silent_all_sids(&mut self, dev_nr: i32, write_volume: bool);
 
-    fn silent_sid(&mut self, dev_nr: i32);
+    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool);
 
     fn device_reset(&mut self, dev_nr: i32);
 

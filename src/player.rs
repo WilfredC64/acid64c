@@ -2,6 +2,7 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod acid64_library;
+mod clock_adjust;
 mod hardsid_usb;
 mod hardsid_usb_device;
 mod network_sid_device;
@@ -171,6 +172,8 @@ impl Player
 
         let mut device_state = DeviceResponse::Ok;
 
+        self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
+
         while !self.should_quit() {
             self.process_player_commands();
 
@@ -220,7 +223,7 @@ impl Player
         self.abort_type.store(ABORTING, Ordering::SeqCst);
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number);
+        self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number, true);
 
         self.abort_type.store(ABORTED, Ordering::SeqCst);
     }
@@ -242,7 +245,7 @@ impl Player
                 PlayerCommand::Pause => {
                     let device = self.sid_device.as_mut().unwrap();
                     device.reset_all_buffers(self.device_number);
-                    device.silent_all_sids(self.device_number);
+                    device.silent_all_sids(self.device_number, false);
                     self.paused = true;
                 },
                 _ => ()
@@ -531,7 +534,6 @@ impl Player
         }
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        self.sid_device.as_mut().unwrap().reset_sid(self.device_number);
         self.song_number = song_number;
 
         self.acid64_lib.set_song_to_play(self.c64_instance, song_number);

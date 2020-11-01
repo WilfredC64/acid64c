@@ -73,12 +73,12 @@ impl SidDevice for SidDevicesFacade {
         self.devices.set_fade_out(dev_nr, time_millis);
     }
 
-    fn silent_all_sids(&mut self, dev_nr: i32) {
-        self.devices.silent_all_sids(dev_nr);
+    fn silent_all_sids(&mut self, dev_nr: i32, write_volume: bool) {
+        self.devices.silent_all_sids(dev_nr, write_volume);
     }
 
-    fn silent_sid(&mut self, dev_nr: i32) {
-        self.devices.silent_sid(dev_nr);
+    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
+        self.devices.silent_sid(dev_nr, write_volume);
     }
 
     fn device_reset(&mut self, dev_nr: i32) {
@@ -340,16 +340,16 @@ impl SidDevices {
         self.sid_devices[mapped_dev_nr as usize].set_fade_out(mapped_sid_nr as i32, time_millis);
     }
 
-    pub fn silent_all_sids(&mut self, dev_nr: i32) {
+    pub fn silent_all_sids(&mut self, dev_nr: i32, write_volume: bool) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].silent_all_sids(mapped_sid_nr as i32);
+        self.sid_devices[mapped_dev_nr as usize].silent_all_sids(mapped_sid_nr as i32, write_volume);
     }
 
-    pub fn silent_sid(&mut self, dev_nr: i32) {
+    pub fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].silent_sid(mapped_sid_nr as i32);
+        self.sid_devices[mapped_dev_nr as usize].silent_sid(mapped_sid_nr as i32, write_volume);
     }
 
     pub fn device_reset(&mut self, dev_nr: i32) {

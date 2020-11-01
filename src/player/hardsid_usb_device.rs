@@ -1,11 +1,11 @@
 // Copyright (C) 2020 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
+use super::clock_adjust::ClockAdjust;
 use super::hardsid_usb::{HardSidUsb, HSID_USB_STATE_OK, HSID_USB_STATE_ERROR, HSID_USB_STATE_BUSY, DEV_TYPE_HS_4U, DEV_TYPE_HS_UPLAY, DEV_TYPE_HS_UNO};
 use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 
-use std::cmp::min;
 use std::collections::VecDeque;
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, thread, time};
@@ -15,16 +15,6 @@ const ERROR_MSG_DEVICE_FAILURE: &str = "Failure occurred during interaction with
 const ERROR_MSG_INIT_DEVICE: &str = "Initializing HardSID USB device failed.";
 const ERROR_MSG_NO_HARDSID_FOUND: &str = "No HardSID USB device found.";
 const ERROR_MSG_DEVICE_COUNT_CHANGED: &str = "Number of devices is changed.";
-
-const HS_CLOCK: f64 = 1000000.0;
-const PAL_CLOCK: f64 = 17734475.0 / 18.0;
-const NTSC_CLOCK: f64 = 14318180.0 / 14.0;
-
-const PAL_CLOCK_SCALE: f64 = (HS_CLOCK - PAL_CLOCK) / HS_CLOCK;
-const NTSC_CLOCK_SCALE: f64 = (NTSC_CLOCK - HS_CLOCK) / HS_CLOCK;
-
-const PAL_FREQ_SCALE: u32 = ((HS_CLOCK - PAL_CLOCK) * 65536.0 / PAL_CLOCK) as u32;
-const NTSC_FREQ_SCALE: u32 = ((NTSC_CLOCK - HS_CLOCK) * 65536.0 / NTSC_CLOCK) as u32;
 
 pub struct HardsidUsbDeviceFacade {
     pub hs_device: HardsidUsbDevice
@@ -91,12 +81,12 @@ impl SidDevice for HardsidUsbDeviceFacade {
         // not supported
     }
 
-    fn silent_all_sids(&mut self, dev_nr: i32) {
-        self.hs_device.silent_all_sids(dev_nr);
+    fn silent_all_sids(&mut self, _dev_nr: i32, write_volume: bool) {
+        self.hs_device.silent_all_sids(write_volume);
     }
 
-    fn silent_sid(&mut self, dev_nr: i32) {
-        self.hs_device.silent_sid(dev_nr);
+    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
+        self.hs_device.silent_sid(dev_nr, write_volume);
     }
 
     fn device_reset(&mut self, _dev_nr: i32) {
@@ -193,9 +183,7 @@ pub struct HardsidUsbDevice {
     device_mappings: Vec<i32>,
     sid_write_fifo: VecDeque<SidWrite>,
     use_native_device_clock: bool,
-    total_cycles_to_stretch: f64,
-    freq: [u32; 3*8],
-    last_freq: [u32; 3*8],
+    clock_adjust: ClockAdjust,
     cycles_to_compensate: u32,
     device_init_done: Vec<bool>
 }
@@ -218,9 +206,7 @@ impl HardsidUsbDevice {
             device_mappings: vec![],
             sid_write_fifo: VecDeque::new(),
             use_native_device_clock: false,
-            total_cycles_to_stretch: 0.0,
-            freq: [0; 3*8],
-            last_freq: [0; 3*8],
+            clock_adjust: ClockAdjust::new(),
             cycles_to_compensate: 0,
             device_init_done: vec![]
         }
@@ -289,10 +275,8 @@ impl HardsidUsbDevice {
     #[inline]
     fn init_write_state(&mut self) {
         self.sid_write_fifo.clear();
-        self.total_cycles_to_stretch = 0.0;
         self.cycles_to_compensate = 0;
-        self.freq = [0; 3*8];
-        self.last_freq = [0; 3*8];
+        self.clock_adjust.init(self.sid_clock);
     }
 
     pub fn disconnect_with_error(&mut self, error_message: String) {
@@ -375,18 +359,18 @@ impl HardsidUsbDevice {
 
     pub fn set_sid_clock(&mut self, sid_clock: SidClock) {
         self.sid_clock = sid_clock;
+        self.clock_adjust.init(sid_clock);
     }
 
-    pub fn silent_all_sids(&mut self, _dev_nr: i32) {
+    pub fn silent_all_sids(&mut self, write_volume: bool) {
         for i in 0..self.number_of_sids {
-            self.silent_sid(i);
+            self.silent_sid(i, write_volume);
         }
     }
 
-    pub fn silent_sid(&mut self, dev_nr: i32) {
+    pub fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
         if self.number_of_sids > 0 {
             let reg_base = self.device_base_reg[dev_nr as usize];
-
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x00, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
@@ -406,8 +390,11 @@ impl HardsidUsbDevice {
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x13, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x14, 0);
 
+            if write_volume {
+                self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x18, 0);
+            }
+
             self.force_flush(dev_nr);
-            self.init_write_state();
         }
     }
 
@@ -420,7 +407,6 @@ impl HardsidUsbDevice {
     pub fn reset_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
             let reg_base = self.device_base_reg[dev_nr as usize];
-
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
@@ -457,7 +443,6 @@ impl HardsidUsbDevice {
 
             self.dummy_write(dev_nr, 40000);
             self.force_flush(dev_nr);
-            self.init_write_state();
         }
     }
 
@@ -474,8 +459,6 @@ impl HardsidUsbDevice {
             self.sid_device.as_ref().unwrap().abort_play(dev_nr as u8);
             thread::sleep(time::Duration::from_millis(10));
         }
-
-        self.init_write_state();
     }
 
     pub fn enable_turbo_mode(&mut self) {
@@ -607,37 +590,6 @@ impl HardsidUsbDevice {
     }
 
     #[inline]
-    fn adjust_cycles(&mut self, cycles: u32) -> u32 {
-        let cycles = cycles as f64;
-
-        if self.sid_clock == SidClock::Pal {
-            let cycles_to_stretch = cycles * PAL_CLOCK_SCALE;
-            self.total_cycles_to_stretch += cycles_to_stretch;
-
-            if self.total_cycles_to_stretch >= 1.0 {
-                let stretch_rounded = self.total_cycles_to_stretch.trunc();
-                self.total_cycles_to_stretch -= stretch_rounded;
-                return (cycles + stretch_rounded) as u32;
-            }
-        } else {
-            let cycles_to_stretch = cycles * NTSC_CLOCK_SCALE;
-            self.total_cycles_to_stretch += cycles_to_stretch;
-
-            if self.total_cycles_to_stretch >= 1.0 {
-                if cycles + 1.0 > self.total_cycles_to_stretch {
-                    let stretch_rounded = self.total_cycles_to_stretch.trunc();
-                    self.total_cycles_to_stretch -= stretch_rounded;
-                    return (cycles - stretch_rounded) as u32;
-                } else if cycles as u32 > MIN_CYCLE_SID_WRITE {
-                    self.total_cycles_to_stretch -= cycles - MIN_CYCLE_SID_WRITE as f64;
-                    return MIN_CYCLE_SID_WRITE;
-                }
-            }
-        }
-        cycles as u32
-    }
-
-    #[inline]
     fn adjust_frequency(&mut self, reg: u8, data: u8) {
         let reg_offset = reg & 0x1f;
 
@@ -660,9 +612,9 @@ impl HardsidUsbDevice {
         if reg <= 1 {
             let voice_index = voice_nr + (reg_base >> 5) * 3;
 
-            let freq = self.update_frequency(voice_index, reg, data);
-            let last_freq = self.last_freq[voice_index as usize];
-            let scaled_freq = self.scale_frequency(voice_index, freq);
+            self.clock_adjust.update_frequency(voice_index, reg, data);
+            let last_freq = self.clock_adjust.get_last_scaled_freq(voice_index);
+            let scaled_freq = self.clock_adjust.scale_frequency(voice_index);
 
             let voice_base = voice_nr * 7;
 
@@ -675,31 +627,6 @@ impl HardsidUsbDevice {
             }
             self.push_write(DeviceCommand::Write, 0 + voice_base + reg_base, (scaled_freq & 0xff) as u8, 0);
         }
-    }
-
-    #[inline]
-    fn scale_frequency(&mut self, voice_index: u8, freq: u32) -> u32 {
-        let scaled_freq = if self.sid_clock == SidClock::Ntsc {
-            let freq = freq + (freq * NTSC_FREQ_SCALE >> 16);
-            min(freq, 0xffff)
-        } else {
-            freq - (freq * PAL_FREQ_SCALE >> 16)
-        };
-
-        self.last_freq[voice_index as usize] = scaled_freq;
-        scaled_freq
-    }
-
-    #[inline]
-    fn update_frequency(&mut self, voice_index: u8, reg: u8, data: u8) -> u32 {
-        let freq = self.freq[voice_index as usize];
-        let freq = if reg == 0 {
-            (freq & 0xff00) + data as u32
-        } else {
-            (freq & 0x00ff) + ((data as u32) << 8)
-        };
-        self.freq[voice_index as usize] = freq;
-        freq
     }
 
     #[inline]
@@ -766,7 +693,7 @@ impl HardsidUsbDevice {
         const MINIMUM_CYCLES: u32 = 100;
 
         let mut cycles = if !self.use_native_device_clock {
-            self.adjust_cycles(cycles)
+            self.clock_adjust.adjust_cycles(cycles)
         } else {
             cycles
         };
