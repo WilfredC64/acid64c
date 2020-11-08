@@ -17,7 +17,7 @@ const MAX_SID_WRITES: usize = WRITE_BUFFER_SIZE - BUFFER_SINGLE_WRITE_SIZE;
 const WRITE_CYCLES_THRESHOLD: u32 = 63 * 312 * 5 / 2;
 const CLIENT_WAIT_CYCLES_THRESHOLD: u32 = 20000;
 const MIN_CYCLES_FOR_DELAY: u32 = 63 * 312 * 50;
-const MIN_WAIT_TIME_BUSY_MS: u64 = 15;
+const MIN_WAIT_TIME_BUSY_MS: u64 = 5;
 const BUFFER_HEADER_SIZE: usize = 4;
 const DEFAULT_DEVICE_COUNT_INTERFACE_V1: i32 = 2;
 const SOCKET_CONNECTION_TIMEOUT: u64 = 1000;
@@ -561,12 +561,12 @@ impl NetworkSidDevice {
             match device_state {
                 CommandResponse::Ok => {
                     if cycles_sent_to_server > CLIENT_WAIT_CYCLES_THRESHOLD {
-                        thread::sleep(time::Duration::from_millis(5));
+                        thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MS));
                     }
                     DeviceResponse::Ok
                 },
                 CommandResponse::Busy => {
-                    thread::sleep(time::Duration::from_millis(5));
+                    thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MS));
                     DeviceResponse::Busy
                 },
                 CommandResponse::Error => DeviceResponse::Error,

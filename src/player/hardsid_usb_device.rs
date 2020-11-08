@@ -205,7 +205,7 @@ impl HardsidUsbDevice {
             last_error: None,
             device_mappings: vec![],
             sid_write_fifo: VecDeque::new(),
-            use_native_device_clock: false,
+            use_native_device_clock: true,
             clock_adjust: ClockAdjust::new(),
             cycles_to_compensate: 0,
             device_init_done: vec![]
@@ -457,7 +457,6 @@ impl HardsidUsbDevice {
     pub fn reset_all_buffers(&mut self, dev_nr: i32) {
         if self.is_connected() {
             self.sid_device.as_ref().unwrap().abort_play(dev_nr as u8);
-            thread::sleep(time::Duration::from_millis(10));
         }
     }
 

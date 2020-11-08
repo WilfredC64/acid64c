@@ -30,6 +30,7 @@ const MIN_CYCLE_SID_WRITE: u32 = 4;
 const SID_MODEL_8580: i32 = 2;
 
 const PAUSE_SLEEP_MS: u64 = 10;
+const ABORT_DEVICE_DELAY: u64 = 20;
 
 pub const ABORT_NO: AbortType = 0;
 pub const ABORT_TO_QUIT: AbortType = 1;
@@ -223,6 +224,7 @@ impl Player
         self.abort_type.store(ABORTING, Ordering::SeqCst);
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+        thread::sleep(time::Duration::from_millis(ABORT_DEVICE_DELAY));
         self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number, true);
 
         self.abort_type.store(ABORTED, Ordering::SeqCst);

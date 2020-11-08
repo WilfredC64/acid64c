@@ -139,8 +139,10 @@ pub struct SidDevices {
     device_count: i32,
     device_name: Vec<String>,
     device_mapping_id: Vec<u8>,
+    device_sid_count: Vec<u8>,
     device_offset: Vec<u8>,
     abort_type: Arc<AtomicI32>,
+    use_native_device_clock: bool,
 }
 
 #[allow(dead_code)]
@@ -151,8 +153,10 @@ impl SidDevices {
             device_count: 0,
             device_name: vec![],
             device_mapping_id: vec![],
+            device_sid_count: vec![],
             device_offset: vec![],
             abort_type,
+            use_native_device_clock: true,
         }
     }
 
@@ -164,6 +168,7 @@ impl SidDevices {
             Err(hs_connect_result.err().unwrap_or("".to_string()) + " | "
                 + &ns_connect_result.err().unwrap_or("".to_string()))
         } else {
+            self.set_native_device_clock(self.use_native_device_clock);
             Ok(())
         }
     }
@@ -172,8 +177,10 @@ impl SidDevices {
         let mut hs_device = HardsidUsbDevice::new(Arc::clone(&self.abort_type));
         let hs_connect_result = hs_device.connect();
         if hs_connect_result.is_ok() {
+            let sid_count = hs_device.get_device_count();
             let hs_facade = HardsidUsbDeviceFacade { hs_device };
             self.sid_devices.push(Box::new(hs_facade));
+            self.device_sid_count.push(sid_count as u8);
 
             self.retrieve_device_info(self.sid_devices.len() - 1);
             Ok(())
@@ -186,8 +193,10 @@ impl SidDevices {
         let mut ns_device = NetworkSidDevice::new(Arc::clone(&self.abort_type));
         let ns_connect_result = ns_device.connect(ip_address, port);
         if ns_connect_result.is_ok() {
+            let sid_count = ns_device.get_device_count();
             let ns_facade = NetworkSidDeviceFacade { ns_device };
             self.sid_devices.push(Box::new(ns_facade));
+            self.device_sid_count.push(sid_count as u8);
 
             self.retrieve_device_info(self.sid_devices.len() - 1);
             Ok(())
@@ -221,31 +230,45 @@ impl SidDevices {
     pub fn disconnect(&mut self, dev_nr: i32) {
         if dev_nr < self.device_count {
             let mapped_dev_nr = self.map_device(dev_nr) as usize;
-            self.sid_devices[mapped_dev_nr].disconnect(0);
-            self.sid_devices.remove(mapped_dev_nr);
-
-            for i in 0..self.device_mapping_id.len() {
-                if i == mapped_dev_nr {
-                    self.device_name.remove(i as usize);
-                    self.device_offset.remove(i as usize);
-                }
-            }
-
-            self.device_mapping_id.retain(|index| *index == mapped_dev_nr as u8);
-
-            self.device_count -= 1;
+            self.disconnect_device(mapped_dev_nr);
         }
+    }
+
+    fn disconnect_device(&mut self, dev_nr: usize) {
+        let device_count = self.device_sid_count[dev_nr];
+        self.sid_devices[dev_nr].disconnect(0);
+        self.sid_devices.remove(dev_nr);
+        self.device_sid_count.remove(dev_nr);
+
+        for (i, &device_id) in self.device_mapping_id.iter().enumerate().rev() {
+            if device_id == dev_nr as u8 {
+                self.device_name.remove(i);
+                self.device_offset.remove(i);
+            }
+        }
+
+        self.device_mapping_id = self.device_mapping_id.iter()
+            .filter(|&&index| index != dev_nr as u8 )
+            .map(|&index| {
+                if index > dev_nr as u8 {
+                    index - 1
+                } else {
+                    index
+                }
+            }).collect();
+
+        self.device_count -= device_count as i32;
     }
 
     pub fn is_connected(&mut self, dev_nr: i32) -> bool {
         if dev_nr == -1 {
             for i in 0..self.sid_devices.len() {
                 let connected = self.sid_devices[i].is_connected(0);
-                if connected {
-                    return true;
+                if !connected {
+                    return false;
                 }
             }
-            return false;
+            return true;
         }
 
         let mapped_dev_nr = self.map_device(dev_nr);
@@ -261,13 +284,19 @@ impl SidDevices {
 
     pub fn test_connection(&mut self, dev_nr: i32) {
         if dev_nr == -1 {
-            for i in 0..self.sid_devices.len() {
+            for i in (0..self.sid_devices.len()).rev() {
                 self.sid_devices[i].test_connection(0);
+                if !self.sid_devices[i].is_connected(0) {
+                    self.disconnect_device(i);
+                }
             }
         } else {
             let mapped_dev_nr = self.map_device(dev_nr);
             let mapped_sid_nr = self.map_sid_offset(dev_nr);
             self.sid_devices[mapped_dev_nr as usize].test_connection(mapped_sid_nr as i32);
+            if !self.sid_devices[mapped_dev_nr as usize].is_connected(0) {
+                self.disconnect_device(mapped_dev_nr as usize);
+            }
         }
     }
 
@@ -419,6 +448,7 @@ impl SidDevices {
     }
 
     pub fn set_native_device_clock(&mut self, enabled: bool) {
+        self.use_native_device_clock = enabled;
         for i in 0..self.sid_devices.len() {
             self.sid_devices[i].set_native_device_clock(enabled);
         }
