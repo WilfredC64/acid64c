@@ -322,7 +322,7 @@ impl HardsidUsbDevice {
             DEV_TYPE_HS_UNO => "HardSID Uno ",
             _ => "Unknown HS "
         };
-        dev_name.to_string() + &*(dev_nr + 1).to_string()
+        dev_name.to_string() + &(dev_nr + 1).to_string()
     }
 
     pub fn set_sid_count(&mut self, sid_count: i32) {

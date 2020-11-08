@@ -538,7 +538,11 @@ impl NetworkSidDevice {
     }
 
     pub fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
-        self.try_write_buffer(Command::TryWrite, dev_nr, None)
+        if self.buffer_index > BUFFER_HEADER_SIZE {
+            self.try_write_buffer(Command::TryWrite, dev_nr, None)
+        } else {
+            DeviceResponse::Ok
+        }
     }
 
     #[inline]
@@ -821,8 +825,8 @@ impl NetworkSidDevice {
         self.reset_buffer();
 
         if let Some(arguments) = optional_arguments {
-            for item in arguments.iter() {
-                self.write_buffer[self.buffer_index] = *item;
+            for &item in arguments.iter() {
+                self.write_buffer[self.buffer_index] = item;
                 self.buffer_index += 1;
             }
         }
