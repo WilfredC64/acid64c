@@ -536,6 +536,9 @@ impl Player
         }
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+        self.sid_device.as_mut().unwrap().device_reset(self.device_number);
+        self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
+
         self.song_number = song_number;
 
         self.acid64_lib.set_song_to_play(self.c64_instance, song_number);
