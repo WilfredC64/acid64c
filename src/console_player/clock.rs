@@ -1,7 +1,7 @@
 // Copyright (C) 2019 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use std::io::{stdout, Write};
+use std::io::stdout;
 use crossterm::cursor::{Hide, MoveLeft, MoveRight, SavePosition, RestorePosition, Show};
 use crossterm::execute;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
