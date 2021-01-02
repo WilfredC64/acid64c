@@ -271,7 +271,7 @@ impl NetworkSidDevice {
         self.last_error.clone()
     }
 
-    pub fn is_connected(&mut self) -> bool {
+    pub fn is_connected(&self) -> bool {
         self.sid_device.is_some()
     }
 
