@@ -288,7 +288,7 @@ impl HardsidUsbDevice {
         self.last_error.clone()
     }
 
-    pub fn is_connected(&mut self) -> bool {
+    pub fn is_connected(&self) -> bool {
         self.sid_device.is_some()
     }
 
@@ -330,18 +330,20 @@ impl HardsidUsbDevice {
     }
 
     pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
-        let current_val = self.device_mappings[sid_socket as usize];
+        if self.is_connected() {
+            let current_val = self.device_mappings[sid_socket as usize];
 
-        for i in 0..self.device_mappings.len() {
-            if self.device_mappings[i] == dev_nr {
-                self.device_mappings[i] = current_val;
-                break;
+            for i in 0..self.device_mappings.len() {
+                if self.device_mappings[i] == dev_nr {
+                    self.device_mappings[i] = current_val;
+                    break;
+                }
             }
+
+            self.wait_for_uplay_activation(dev_nr, sid_socket);
+
+            self.device_mappings[sid_socket as usize] = dev_nr;
         }
-
-        self.wait_for_uplay_activation(dev_nr, sid_socket);
-
-        self.device_mappings[sid_socket as usize] = dev_nr;
     }
 
     #[inline]
@@ -369,7 +371,7 @@ impl HardsidUsbDevice {
     }
 
     pub fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        if self.number_of_sids > 0 {
+        if self.number_of_sids > 0 && self.is_connected() {
             let reg_base = self.device_base_reg[dev_nr as usize];
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x00, 0);
@@ -405,7 +407,7 @@ impl HardsidUsbDevice {
     }
 
     pub fn reset_sid(&mut self, dev_nr: i32) {
-        if self.number_of_sids > 0 {
+        if self.number_of_sids > 0 && self.is_connected() {
             let reg_base = self.device_base_reg[dev_nr as usize];
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
@@ -505,16 +507,18 @@ impl HardsidUsbDevice {
     }
 
     pub fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
-        let reg = self.map_to_supported_device(dev_nr, reg);
+        if self.is_connected() {
+            let reg = self.map_to_supported_device(dev_nr, reg);
 
-        self.create_delay(cycles_input);
-        self.create_write(reg, data);
+            self.create_delay(cycles_input);
+            self.create_write(reg, data);
 
-        while !self.sid_write_fifo.is_empty() {
-            let sid_write = self.sid_write_fifo.pop_front().unwrap();
-            match sid_write.command {
-                DeviceCommand::Delay => self.try_delay_sync(dev_nr, sid_write.cycles as u16),
-                DeviceCommand::Write => self.try_write_sync(dev_nr, sid_write.reg, sid_write.data)
+            while !self.sid_write_fifo.is_empty() {
+                let sid_write = self.sid_write_fifo.pop_front().unwrap();
+                match sid_write.command {
+                    DeviceCommand::Delay => self.try_delay_sync(dev_nr, sid_write.cycles as u16),
+                    DeviceCommand::Write => self.try_write_sync(dev_nr, sid_write.reg, sid_write.data)
+                }
             }
         }
     }
