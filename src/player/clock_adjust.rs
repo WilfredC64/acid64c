@@ -1,3 +1,6 @@
+// Copyright (C) 2019 - 2021 Wilfred Bos
+// Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
+
 use std::cmp::min;
 use super::sid_device::SidClock;
 use super::MIN_CYCLE_SID_WRITE;
