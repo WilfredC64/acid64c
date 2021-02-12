@@ -21,7 +21,9 @@ pub struct HardSidUsb {
 impl HardSidUsb {
     pub fn new() -> HardSidUsb {
         HardSidUsb {
-            hs4u_lib: Library::new("hardsid_lib").expect("hardsid_lib library could not be found."),
+            hs4u_lib: unsafe {
+                Library::new("hardsid_lib").expect("hardsid_lib library could not be found.")
+            }
         }
     }
 
@@ -91,4 +93,3 @@ impl HardSidUsb {
         }
     }
 }
-

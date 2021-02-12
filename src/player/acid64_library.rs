@@ -15,7 +15,9 @@ pub struct Acid64Library {
 impl Acid64Library {
     pub fn new() -> Acid64Library {
         Acid64Library {
-            a64lib: Library::new("acid64pro").expect("acid64pro library could not be found."),
+            a64lib: unsafe {
+                Library::new("acid64pro").expect("acid64pro library could not be found.")
+            }
         }
     }
 

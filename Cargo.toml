@@ -10,7 +10,7 @@ keywords = ["ACID64 console player", "sidplayer", "c64 music player", "SID 6581"
 build = "build.rs"
 
 [dependencies]
-libloading = "0.6"
+libloading = "0.7"
 encoding = "0.2"
 crossterm = "0.19.0"
 timer = "0.2"
