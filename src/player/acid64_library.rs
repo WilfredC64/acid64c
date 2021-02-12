@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2020 Wilfred Bos
+// Copyright (C) 2019 - 2021 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use encoding::{Encoding, DecoderTrap, EncoderTrap};
