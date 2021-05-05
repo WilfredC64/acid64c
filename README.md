@@ -68,7 +68,7 @@ For documentation about the acid64pro.dll library, see the [readme.txt](/library
 in the library folder.
 
 For documentation about the network SID device, see the
-[Network SID Device V4](http://htmlpreview.github.com/?https://github.com/WilfredC64/acid64c/blob/master/docs/network_sid_device_v4.html) specification,
+[Network SID Device V4](https://htmlpreview.github.io/?https://github.com/WilfredC64/acid64c/blob/master/docs/network_sid_device_v4.html) specification,
 converted from the
 [JSidplay2](https://sourceforge.net/p/jsidplay2/code/HEAD/tree/trunk/jsidplay2/src/main/asciidoc/netsiddev.adoc) project.
 
