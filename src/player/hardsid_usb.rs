@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Wilfred Bos
+// Copyright (C) 2020 - 2021 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 use libloading::{Library, Symbol};
 
@@ -8,9 +8,9 @@ pub const HSID_USB_STATE_BUSY: HsidUsbState = 2;
 pub const HSID_USB_STATE_ERROR: HsidUsbState = 3;
 pub type HsidUsbState = u8;
 
-pub const DEV_TYPE_HS_4U: HsidUsbState = 1;     // HardSID 4U device
-pub const DEV_TYPE_HS_UPLAY: HsidUsbState = 2;  // HardSID UPlay device
-pub const DEV_TYPE_HS_UNO: HsidUsbState = 3;    // HardSID Uno device
+pub const DEV_TYPE_HS_4U: HsidDevType = 1;     // HardSID 4U device
+pub const DEV_TYPE_HS_UPLAY: HsidDevType = 2;  // HardSID UPlay device
+pub const DEV_TYPE_HS_UNO: HsidDevType = 3;    // HardSID Uno device
 pub type HsidDevType = u8;
 
 pub struct HardSidUsb {
@@ -31,8 +31,8 @@ impl HardSidUsb {
     pub fn init(&self) -> bool {
         unsafe {
             const SYNC_MODE: i32 = 1;
-            const SIDPLAY_MODE: u8 = 1;
-            (self.hs4u_lib.get(b"hardsid_usb_init").unwrap() as Symbol<unsafe extern "stdcall" fn(i32, u8) -> bool>)(SYNC_MODE, SIDPLAY_MODE)
+            const SIDPLAY_MODE: u16 = 1;
+            (self.hs4u_lib.get(b"hardsid_usb_init").unwrap() as Symbol<unsafe extern "stdcall" fn(i32, u16) -> bool>)(SYNC_MODE, SIDPLAY_MODE)
         }
     }
 
