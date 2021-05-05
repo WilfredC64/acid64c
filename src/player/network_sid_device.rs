@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2020 Wilfred Bos
+// Copyright (C) 2019 - 2021 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use std::cmp::{min, max};
@@ -22,7 +22,6 @@ const BUFFER_HEADER_SIZE: usize = 4;
 const DEFAULT_DEVICE_COUNT_INTERFACE_V1: i32 = 2;
 const SOCKET_CONNECTION_TIMEOUT: u64 = 1000;
 
-#[derive(Copy, Clone)]
 enum CommandResponse {
     Ok = 0,
     Busy,
@@ -424,9 +423,9 @@ impl NetworkSidDevice {
     }
 
     pub fn device_reset(&mut self, dev_nr: i32) {
-        let default_volume = 0x0f;
+        let default_volume = 0u8;
         let dev_nr = self.convert_device_number(dev_nr);
-        self.try_flush_buffer(Command::TryReset, dev_nr, Some(&[default_volume as u8]));
+        self.try_flush_buffer(Command::TryReset, dev_nr, Some(&[default_volume]));
         self.unmute(dev_nr, 0);
         self.unmute(dev_nr, 1);
         self.unmute(dev_nr, 2);
