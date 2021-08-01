@@ -139,13 +139,11 @@ impl SidDevice for HardsidUsbDeviceFacade {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq)]
 pub enum DeviceCommand {
     Write = 0,
     Delay = 1
 }
 
-#[derive(Copy, Clone)]
 pub struct SidWrite {
     pub command: DeviceCommand,
     pub reg: u8,
@@ -175,7 +173,6 @@ pub struct HardsidUsbDevice {
     device_id: Vec<u8>,
     device_base_reg: Vec<u8>,
     device_index: Vec<u8>,
-    device_sid_count: Vec<u8>,
     abort_type: Arc<AtomicI32>,
     last_error: Option<String>,
     device_mappings: Vec<i32>,
@@ -200,7 +197,6 @@ impl HardsidUsbDevice {
             device_id: vec![],
             device_base_reg: vec![],
             device_index: vec![],
-            device_sid_count: vec![],
             abort_type,
             last_error: None,
             device_mappings: vec![],
@@ -220,7 +216,7 @@ impl HardsidUsbDevice {
         let success = usb_device.init_sidplay_mode();
 
         if !success {
-            let error = usb_device.get_last_error().unwrap_or("".to_string());
+            let error = usb_device.get_last_error().unwrap_or("unknown".to_string());
             Err(format!("{} {}.", ERROR_MSG_INIT_DEVICE.to_string(), error))
         } else {
             let dev_count = usb_device.get_dev_count();
@@ -240,7 +236,6 @@ impl HardsidUsbDevice {
                         self.device_base_reg.push(j * 0x20);
                         self.device_mappings.push(j as i32);
                         self.device_init_done.push(false);
-                        self.device_sid_count.push(dev_sid_count);
                         dev_type_count[dev_type as usize] += 1;
                     }
                 }
@@ -277,7 +272,6 @@ impl HardsidUsbDevice {
         self.device_index = vec![];
         self.device_mappings = vec![];
         self.device_init_done = vec![];
-        self.device_sid_count = vec![];
 
         self.init_write_state();
     }
@@ -304,7 +298,7 @@ impl HardsidUsbDevice {
 
     pub fn test_connection(&mut self, dev_nr: i32) {
         if self.is_connected() {
-            let dev_count = self.sid_device.as_ref().unwrap().get_dev_count();
+            let dev_count = self.sid_device.as_mut().unwrap().get_dev_count();
 
             if dev_count as i32 != self.device_count {
                 self.disconnect_with_error(ERROR_MSG_DEVICE_COUNT_CHANGED.to_string());
