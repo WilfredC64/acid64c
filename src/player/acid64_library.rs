@@ -7,6 +7,7 @@ use libloading::{Library, Symbol};
 use std::ffi::{CString, CStr};
 use std::ptr::null;
 
+#[cfg(target_arch = "x86")]
 pub struct Acid64Library {
     a64lib: Library
 }

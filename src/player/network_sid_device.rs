@@ -129,10 +129,6 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.silent_sid(dev_nr, write_volume);
     }
 
-    fn device_reset(&mut self, _dev_nr: i32) {
-        self.ns_device.device_reset(0);
-    }
-
     fn reset_all_sids(&mut self, _dev_nr: i32) {
         self.ns_device.reset_all_sids();
     }
@@ -266,7 +262,7 @@ impl NetworkSidDevice {
         self.disconnect();
     }
 
-    pub fn get_last_error(&mut self) -> Option<String> {
+    pub fn get_last_error(&self) -> Option<String> {
         self.last_error.clone()
     }
 
@@ -288,7 +284,7 @@ impl NetworkSidDevice {
         self.try_flush_buffer(Command::GetVersion, 0, None);
     }
 
-    pub fn get_device_count(&mut self) -> i32 {
+    pub fn get_device_count(&self) -> i32 {
         self.device_count
     }
 
@@ -422,24 +418,29 @@ impl NetworkSidDevice {
         }
     }
 
-    pub fn device_reset(&mut self, dev_nr: i32) {
+    #[inline]
+    fn device_reset(&mut self, dev_nr: i32) {
         let default_volume = 0u8;
         let dev_nr = self.convert_device_number(dev_nr);
         self.try_flush_buffer(Command::TryReset, dev_nr, Some(&[default_volume]));
-        self.unmute(dev_nr, 0);
-        self.unmute(dev_nr, 1);
-        self.unmute(dev_nr, 2);
-        self.unmute(dev_nr, 3);
+
+        self.unmute_all_voices(0);
     }
 
-    fn unmute(&mut self, dev_nr: i32, voice_number: i32) {
-        if !(voice_number == 3 && self.interface_version < 3) {
-            let dev_nr = self.convert_device_number(dev_nr);
-            self.try_flush_buffer(Command::Mute, dev_nr, Some(&[voice_number as u8, 0]));
+    #[inline]
+    fn unmute_all_voices(&mut self, dev_nr: i32) {
+        let dev_nr = self.convert_device_number(dev_nr);
+        self.try_flush_buffer(Command::Mute, dev_nr, Some(&[0, 0]));
+        self.try_flush_buffer(Command::Mute, dev_nr, Some(&[1, 0]));
+        self.try_flush_buffer(Command::Mute, dev_nr, Some(&[2, 0]));
+        if self.interface_version >= 3 {
+            self.try_flush_buffer(Command::Mute, dev_nr, Some(&[3, 0]));
         }
     }
 
     pub fn reset_all_sids(&mut self) {
+        self.device_reset(0);
+
         for i in 0..self.number_of_sids {
             self.reset_sid(i);
         }
@@ -585,7 +586,7 @@ impl NetworkSidDevice {
         self.try_flush_buffer(Command::TryWrite, dev_nr, None);
     }
 
-    pub fn get_device_clock(&mut self) -> SidClock {
+    pub fn get_device_clock(&self) -> SidClock {
         self.sid_clock
     }
 

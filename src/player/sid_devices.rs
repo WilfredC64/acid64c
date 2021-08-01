@@ -1,8 +1,11 @@
-// Copyright (C) 2020 Wilfred Bos
+// Copyright (C) 2020 - 2021 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
+
+#[cfg(target_os = "windows")]
 use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
+
 use super::network_sid_device::{NetworkSidDevice, NetworkSidDeviceFacade};
 
 use std::sync::atomic::AtomicI32;
@@ -81,10 +84,6 @@ impl SidDevice for SidDevicesFacade {
         self.devices.silent_sid(dev_nr, write_volume);
     }
 
-    fn device_reset(&mut self, dev_nr: i32) {
-        self.devices.device_reset(dev_nr);
-    }
-
     fn reset_all_sids(&mut self, dev_nr: i32) {
         self.devices.reset_all_sids(dev_nr);
     }
@@ -161,18 +160,26 @@ impl SidDevices {
     }
 
     pub fn connect(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
         let hs_connect_result = self.try_connect_hardsid_device();
+
         let ns_connect_result = self.try_connect_network_device(ip_address, port);
 
         if self.sid_devices.len() == 0 {
-            Err(hs_connect_result.err().unwrap_or("".to_string()) + " | "
-                + &ns_connect_result.err().unwrap_or("".to_string()))
+            let mut errors = vec![];
+
+            #[cfg(target_os = "windows")]
+            errors.push(hs_connect_result.err().unwrap_or("".to_string()));
+
+            errors.push(ns_connect_result.err().unwrap_or("".to_string()));
+            Err(errors.join(" | "))
         } else {
             self.set_native_device_clock(self.use_native_device_clock);
             Ok(())
         }
     }
 
+    #[cfg(target_os = "windows")]
     fn try_connect_hardsid_device(&mut self) -> Result<(), String> {
         let mut hs_device = HardsidUsbDevice::new(Arc::clone(&self.abort_type));
         let hs_connect_result = hs_device.connect();
@@ -379,12 +386,6 @@ impl SidDevices {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
         self.sid_devices[mapped_dev_nr as usize].silent_sid(mapped_sid_nr as i32, write_volume);
-    }
-
-    pub fn device_reset(&mut self, dev_nr: i32) {
-        let mapped_dev_nr = self.map_device(dev_nr);
-        let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].device_reset(mapped_sid_nr as i32);
     }
 
     pub fn reset_all_sids(&mut self, dev_nr: i32) {

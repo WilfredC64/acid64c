@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Wilfred Bos
+// Copyright (C) 2020 - 2021 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #[allow(dead_code)]
@@ -58,8 +58,6 @@ pub trait SidDevice {
     fn silent_all_sids(&mut self, dev_nr: i32, write_volume: bool);
 
     fn silent_sid(&mut self, dev_nr: i32, write_volume: bool);
-
-    fn device_reset(&mut self, dev_nr: i32);
 
     fn reset_all_sids(&mut self, dev_nr: i32);
 

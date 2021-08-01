@@ -157,7 +157,7 @@ impl Player
         self.acid64_lib.get_version()
     }
 
-    pub fn get_aborted_ref(&mut self) -> Arc<AtomicI32> {
+    pub fn get_aborted_ref(&self) -> Arc<AtomicI32> {
         Arc::clone(&self.abort_type)
     }
 
@@ -172,8 +172,6 @@ impl Player
         self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
         let mut device_state = DeviceResponse::Ok;
-
-        self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
 
         while !self.should_quit() {
             self.process_player_commands();
@@ -255,7 +253,7 @@ impl Player
         }
     }
 
-    pub fn get_device_names(&mut self) -> Arc<Mutex<Vec<String>>> {
+    pub fn get_device_names(&self) -> Arc<Mutex<Vec<String>>> {
         Arc::clone(&self.device_names)
     }
 
@@ -391,7 +389,7 @@ impl Player
             self.acid64_lib.enable_volume_fix(self.c64_instance, true);
 
             self.init_devices()?;
-            self.configure_sid_device()?;
+            self.configure_sid_device(false)?;
             self.set_song_to_play(-1)
         }
     }
@@ -462,7 +460,7 @@ impl Player
         self.write_last_sid_write(sid_base + 0x18);
     }
 
-    fn get_hvsc_root_location(&mut self, hvsc_location: Option<String>) -> Result<Option<String>, String> {
+    fn get_hvsc_root_location(&self, hvsc_location: Option<String>) -> Result<Option<String>, String> {
         if hvsc_location.is_some() {
             let hvsc_root = hvsc::get_hvsc_root(&hvsc_location.unwrap());
 
@@ -489,7 +487,7 @@ impl Player
         Ok(())
     }
 
-    fn configure_sid_device(&mut self) -> Result<(), String> {
+    fn configure_sid_device(&mut self, should_reset: bool) -> Result<(), String> {
         let number_of_sids = self.acid64_lib.get_number_of_sids(self.c64_instance);
         self.fix_device_numbers(number_of_sids)?;
 
@@ -500,7 +498,9 @@ impl Player
         self.configure_sid_clock();
 
         self.sid_device.as_mut().unwrap().set_sampling_method(self.device_number, SamplingMethod::Best);
-        self.sid_device.as_mut().unwrap().device_reset(self.device_number);
+        if should_reset {
+            self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
+        }
         Ok(())
     }
 
@@ -536,7 +536,6 @@ impl Player
         }
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        self.sid_device.as_mut().unwrap().device_reset(self.device_number);
         self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
 
         self.song_number = song_number;

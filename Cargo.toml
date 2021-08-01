@@ -1,6 +1,6 @@
 [package]
 name = "acid64c"
-version = "1.0.4"
+version = "1.0.5"
 authors = ["Wilfred Bos"]
 description = "ACID64 Console SID player."
 readme = "README.md"
@@ -12,7 +12,7 @@ build = "build.rs"
 [dependencies]
 libloading = "0.7"
 encoding = "0.2"
-crossterm = "0.19.0"
+crossterm = "0.20"
 timer = "0.2"
 chrono = "0.4"
 get_if_addrs = "0.5"
