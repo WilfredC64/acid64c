@@ -46,7 +46,7 @@ impl Acid64Library {
         }
     }
 
-    pub fn check_sldb(&self, filename: String) -> bool {
+    pub fn check_sldb(&self, filename: &str) -> bool {
         unsafe {
             let filename_converted = Self::convert_string_to_ansi_pchar(filename);
             (self.a64lib.get(b"checkSldb").unwrap() as Symbol<unsafe extern "stdcall" fn(*const i8) -> bool>)(filename_converted)
@@ -59,7 +59,7 @@ impl Acid64Library {
         }
     }
 
-    pub fn load_sldb(&self, filename: String) -> bool {
+    pub fn load_sldb(&self, filename: &str) -> bool {
         unsafe {
             let filename_converted = Self::convert_string_to_ansi_pchar(filename);
             (self.a64lib.get(b"loadSldb").unwrap() as Symbol<unsafe extern "stdcall" fn(*const i8) -> bool>)(filename_converted)
@@ -72,15 +72,15 @@ impl Acid64Library {
         }
     }
 
-    pub fn get_filename(&self, md5_hash: String) -> String {
+    pub fn get_filename(&self, md5_hash: &str) -> String {
         unsafe {
             let md5_hash_converted = Self::convert_string_to_ansi_pchar(md5_hash);
             let filename = (self.a64lib.get(b"getFilename").unwrap() as Symbol<unsafe extern "stdcall" fn(*const i8) -> *const i8>)(md5_hash_converted);
-            Self::convert_pchar_to_ansi_string(filename)
+            Self::convert_pchar_to_ansi_string(filename).unwrap_or("".to_string())
         }
     }
 
-    pub fn load_stil(&self, hvsc_location: String) -> bool {
+    pub fn load_stil(&self, hvsc_location: &str) -> bool {
         unsafe {
             let hvsc_location_converted = Self::convert_string_to_ansi_pchar(hvsc_location);
             (self.a64lib.get(b"loadStil").unwrap() as Symbol<unsafe extern "stdcall" fn(*const i8) -> bool>)(hvsc_location_converted)
@@ -99,7 +99,7 @@ impl Acid64Library {
         }
     }
 
-    pub fn load_file(&self, c64_instance: usize, filename: String) -> bool {
+    pub fn load_file(&self, c64_instance: usize, filename: &str) -> bool {
         unsafe {
             let filename_converted = Self::convert_string_to_ansi_pchar(filename);
             (self.a64lib.get(b"loadFile").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *const i8) -> bool>)(c64_instance, filename_converted)
@@ -133,21 +133,21 @@ impl Acid64Library {
     pub fn get_title(&self, c64_instance: usize) -> String {
         unsafe {
             let title_cstyle = (self.a64lib.get(b"getTitle").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            Self::convert_pchar_to_ansi_string(title_cstyle)
+            Self::convert_pchar_to_ansi_string(title_cstyle).unwrap_or("".to_string())
         }
     }
 
     pub fn get_author(&self, c64_instance: usize) -> String {
         unsafe {
             let author_cstyle = (self.a64lib.get(b"getAuthor").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            Self::convert_pchar_to_ansi_string(author_cstyle)
+            Self::convert_pchar_to_ansi_string(author_cstyle).unwrap_or("".to_string())
         }
     }
 
     pub fn get_released(&self, c64_instance: usize) -> String {
         unsafe {
             let released_cstyle = (self.a64lib.get(b"getReleased").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            Self::convert_pchar_to_ansi_string(released_cstyle)
+            Self::convert_pchar_to_ansi_string(released_cstyle).unwrap_or("".to_string())
         }
     }
 
@@ -214,21 +214,21 @@ impl Acid64Library {
     pub fn get_md5_hash(&self, c64_instance: usize) -> String {
         unsafe {
             let md5_hash_cstyle = (self.a64lib.get(b"getMd5Hash").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            Self::convert_pchar_to_ansi_string(md5_hash_cstyle)
+            Self::convert_pchar_to_ansi_string(md5_hash_cstyle).unwrap_or("".to_string())
         }
     }
 
     pub fn get_ancient_md5_hash(&self, c64_instance: usize) -> String {
         unsafe {
             let md5_hash_cstyle = (self.a64lib.get(b"getAncientMd5Hash").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            Self::convert_pchar_to_ansi_string(md5_hash_cstyle)
+            Self::convert_pchar_to_ansi_string(md5_hash_cstyle).unwrap_or("".to_string())
         }
     }
 
     pub fn get_stil_entry(&self, c64_instance: usize) -> Option<String> {
         unsafe {
             let stil_text_cstyle = (self.a64lib.get(b"getStilEntry").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            stil_text_cstyle.as_ref().map(|s| Self::convert_pchar_to_ansi_string(s))
+            Self::convert_pchar_to_ansi_string(stil_text_cstyle)
         }
     }
 
@@ -361,14 +361,14 @@ impl Acid64Library {
     pub fn get_file_type(&self, c64_instance: usize) -> String {
         unsafe {
             let file_type_cstyle = (self.a64lib.get(b"getFileType").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            Self::convert_pchar_to_ansi_string(file_type_cstyle)
+            Self::convert_pchar_to_ansi_string(file_type_cstyle).unwrap_or("".to_string())
         }
     }
 
     pub fn get_file_format(&self, c64_instance: usize) -> String {
         unsafe {
             let file_format_cstyle = (self.a64lib.get(b"getFileFormat").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> *const i8>)(c64_instance);
-            Self::convert_pchar_to_ansi_string(file_format_cstyle)
+            Self::convert_pchar_to_ansi_string(file_format_cstyle).unwrap_or("".to_string())
         }
     }
 
@@ -391,17 +391,16 @@ impl Acid64Library {
     }
 
     #[inline]
-    fn convert_string_to_ansi_pchar(text: String) -> *const i8 {
-        CString::new(ISO_8859_1.encode(&text, EncoderTrap::Ignore).unwrap()).unwrap().into_raw()
+    fn convert_string_to_ansi_pchar(text: &str) -> *const i8 {
+        CString::new(ISO_8859_1.encode(text, EncoderTrap::Ignore).unwrap()).unwrap().into_raw()
     }
 
     #[inline]
-    fn convert_pchar_to_ansi_string(text: *const i8) -> String {
+    unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
         if text == null() {
-            "".to_string()
+            None
         } else {
-            let c_str = unsafe { CStr::from_ptr(text) };
-            ISO_8859_1.decode(c_str.to_bytes(), DecoderTrap::Ignore).unwrap()
+            Some(ISO_8859_1.decode(CStr::from_ptr(text).to_bytes(), DecoderTrap::Ignore).unwrap())
         }
     }
 }

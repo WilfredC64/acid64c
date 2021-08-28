@@ -349,7 +349,7 @@ impl Player
             self.load_sldb(&hvsc_root)?;
 
             if load_stil {
-                self.acid64_lib.load_stil(hvsc_root.to_string());
+                self.acid64_lib.load_stil(&hvsc_root);
             }
         }
         Ok(())
@@ -379,7 +379,7 @@ impl Player
 
     pub fn load_file<S>(&mut self, filename: S) -> Result<(), String> where S: Into<String> {
         let filename = filename.into();
-        let is_loaded = self.acid64_lib.load_file(self.c64_instance, filename.to_owned());
+        let is_loaded = self.acid64_lib.load_file(self.c64_instance, &filename);
 
         if !is_loaded {
             Err(format!("File '{}' could not be loaded.", filename).to_string())
@@ -473,13 +473,13 @@ impl Player
     }
 
     fn load_sldb(&mut self, hvsc_root: &str) -> Result<(), String> {
-        let is_sldb = self.acid64_lib.check_sldb(hvsc_root.to_string());
+        let is_sldb = self.acid64_lib.check_sldb(hvsc_root);
 
         if !is_sldb {
             return Err("Song length database is not found or not a database.".to_string());
         }
 
-        let is_sldb_loaded = self.acid64_lib.load_sldb(hvsc_root.to_string());
+        let is_sldb_loaded = self.acid64_lib.load_sldb(hvsc_root);
 
         if !is_sldb_loaded {
             return Err("Song length database could not be loaded.".to_string());
