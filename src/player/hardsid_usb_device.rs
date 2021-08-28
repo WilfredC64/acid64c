@@ -212,10 +212,14 @@ impl HardsidUsbDevice {
         self.disconnect();
         self.last_error = None;
 
-        let usb_device = HardSidUsb::new();
-        let success = usb_device.init_sidplay_mode();
+        let hardsid_usb = HardSidUsb::load();
+        if hardsid_usb.is_err() {
+            return Err("hardsid_usb library could not be loaded.".to_string())
+        }
 
-        if !success {
+        let usb_device = hardsid_usb.unwrap();
+
+        if !usb_device.init_sidplay_mode() {
             let error = usb_device.get_last_error().unwrap_or("unknown".to_string());
             Err(format!("{} {}.", ERROR_MSG_INIT_DEVICE.to_string(), error))
         } else {
@@ -422,11 +426,13 @@ impl HardsidUsbDevice {
     pub fn reset_all_sids(&mut self, dev_nr: i32) {
         if self.is_connected() {
             if self.device_type[dev_nr as usize] == DEV_TYPE_HS_4U {
-                // only reset all SIDs that are configured for playback
-                for i in 0..self.number_of_sids {
-                    self.reset_sid(i as i32);
-                    if !self.is_connected() {
-                        break;
+                let physical_dev_nr = self.device_id[dev_nr as usize];
+                for i in 0..self.device_id.len() {
+                    if self.device_id[i] == physical_dev_nr {
+                        self.reset_sid(i as i32);
+                        if !self.is_connected() {
+                            break;
+                        }
                     }
                 }
             } else {
