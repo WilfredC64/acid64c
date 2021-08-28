@@ -14,12 +14,18 @@ pub struct Acid64Library {
 
 #[allow(dead_code)]
 impl Acid64Library {
-    pub fn new() -> Acid64Library {
+    fn new(a64lib: Library) -> Acid64Library {
         Acid64Library {
-            a64lib: unsafe {
-                Library::new("acid64pro").expect("acid64pro library could not be found.")
-            }
+            a64lib
         }
+    }
+
+    pub fn load() -> Result<Acid64Library, String> {
+        let a64lib = unsafe { Library::new("acid64pro") };
+        if a64lib.is_err() {
+            return Err("acid64pro library could not be loaded.".to_string());
+        }
+        Ok(Acid64Library::new(a64lib.unwrap()))
     }
 
     pub fn get_version(&self) -> i32 {
@@ -47,9 +53,9 @@ impl Acid64Library {
         }
     }
 
-    pub fn check_sldb_from_buffer(&self, buffer: *const u8, size: i32) -> bool {
+    pub fn check_sldb_from_buffer(&self, buffer: &Vec<u8>) -> bool {
         unsafe {
-            (self.a64lib.get(b"checkSldbFromBuffer").unwrap() as Symbol<unsafe extern "stdcall" fn(*const u8, i32) -> bool>)(buffer, size)
+            (self.a64lib.get(b"checkSldbFromBuffer").unwrap() as Symbol<unsafe extern "stdcall" fn(*const u8, i32) -> bool>)(buffer.as_ptr(), buffer.len() as i32)
         }
     }
 
@@ -60,9 +66,9 @@ impl Acid64Library {
         }
     }
 
-    pub fn load_sldb_from_buffer(&self, buffer: *const u8, size: i32) -> bool {
+    pub fn load_sldb_from_buffer(&self, buffer: &Vec<u8>) -> bool {
         unsafe {
-            (self.a64lib.get(b"loadSldbFromBuffer").unwrap() as Symbol<unsafe extern "stdcall" fn(*const u8, i32) -> bool>)(buffer, size)
+            (self.a64lib.get(b"loadSldbFromBuffer").unwrap() as Symbol<unsafe extern "stdcall" fn(*const u8, i32) -> bool>)(buffer.as_ptr(), buffer.len() as i32)
         }
     }
 
@@ -81,9 +87,9 @@ impl Acid64Library {
         }
     }
 
-    pub fn load_stil_from_buffer(&self, buffer: *const u8, size: i32) -> bool {
+    pub fn load_stil_from_buffer(&self, buffer: &Vec<u8>) -> bool {
         unsafe {
-            (self.a64lib.get(b"loadStilFromBuffer").unwrap() as Symbol<unsafe extern "stdcall" fn(*const u8, i32) -> bool>)(buffer, size)
+            (self.a64lib.get(b"loadStilFromBuffer").unwrap() as Symbol<unsafe extern "stdcall" fn(*const u8, i32) -> bool>)(buffer.as_ptr(), buffer.len() as i32)
         }
     }
 
@@ -262,21 +268,21 @@ impl Acid64Library {
         }
     }
 
-    pub fn get_memory_usage_ram(&self, c64_instance: usize, buffer: *mut u8, size: i32) {
+    pub fn get_memory_usage_ram(&self, c64_instance: usize, buffer: &mut [u8; 0x10000]) {
         unsafe {
-            (self.a64lib.get(b"getMemoryUsageRam").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer, size);
+            (self.a64lib.get(b"getMemoryUsageRam").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer.as_mut_ptr(), buffer.len() as i32);
         }
     }
 
-    pub fn get_memory_usage_rom(&self, c64_instance: usize, buffer: *mut u8, size: i32) {
+    pub fn get_memory_usage_rom(&self, c64_instance: usize, buffer: &mut [u8; 0x10000]) {
         unsafe {
-            (self.a64lib.get(b"getMemoryUsageRom").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer, size);
+            (self.a64lib.get(b"getMemoryUsageRom").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer.as_mut_ptr(), buffer.len() as i32);
         }
     }
 
-    pub fn get_memory(&self, c64_instance: usize, buffer: *mut u8, size: i32) {
+    pub fn get_memory(&self, c64_instance: usize, buffer: &mut [u8; 0x10000]) {
         unsafe {
-            (self.a64lib.get(b"getMemory").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer, size);
+            (self.a64lib.get(b"getMemory").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer.as_mut_ptr(), buffer.len() as i32);
         }
     }
 
@@ -340,15 +346,15 @@ impl Acid64Library {
         }
     }
 
-    pub fn get_mus_text(&self, c64_instance: usize, buffer: *mut u8, size: i32) {
+    pub fn get_mus_text(&self, c64_instance: usize, buffer: &mut [u8; 32*5]) {
         unsafe {
-            (self.a64lib.get(b"getMusText").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer, size);
+            (self.a64lib.get(b"getMusText").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer.as_mut_ptr(), buffer.len() as i32);
         }
     }
 
-    pub fn get_mus_colors(&self, c64_instance: usize, buffer: *mut u8, size: i32) {
+    pub fn get_mus_colors(&self, c64_instance: usize, buffer: &mut [u8; 32*5]) {
         unsafe {
-            (self.a64lib.get(b"getMusColors").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer, size);
+            (self.a64lib.get(b"getMusColors").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer.as_mut_ptr(), buffer.len() as i32);
         }
     }
 
@@ -390,11 +396,11 @@ impl Acid64Library {
     }
 
     #[inline]
-    unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> String {
+    fn convert_pchar_to_ansi_string(text: *const i8) -> String {
         if text == null() {
             "".to_string()
         } else {
-            let c_str = CStr::from_ptr(text);
+            let c_str = unsafe { CStr::from_ptr(text) };
             ISO_8859_1.decode(c_str.to_bytes(), DecoderTrap::Ignore).unwrap()
         }
     }

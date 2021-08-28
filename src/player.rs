@@ -108,7 +108,7 @@ impl Player
         let (cmd_sender, cmd_receiver) = sync_channel(0);
 
         let mut player_properties = Player {
-            acid64_lib: Acid64Library::new(),
+            acid64_lib: Acid64Library::load().expect("acid64pro library could not be loaded"),
             c64_instance: 0,
             sid_device: None,
             filename: None,
