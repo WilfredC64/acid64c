@@ -238,6 +238,7 @@ impl Player
             match recv_result.unwrap() {
                 PlayerCommand::Play => {
                     if self.paused {
+                        self.sid_device.as_mut().unwrap().reset_sid(self.device_number);
                         self.write_last_sid_writes();
                     }
                     self.paused = false;
