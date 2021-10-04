@@ -103,7 +103,7 @@ fn run() -> Result<(), String> {
         return Err("acid64pro.dll version 2.04 or higher required.".to_string());
     }
 
-    println!("ACID64 library version v{}.{:02}", version >> 8, version & 0xff);
+    println!("ACID64 library version v{}.{}.{}", version >> 8, version >> 4 & 0x0f, version & 0x0f);
 
     let mut console_player = ConsolePlayer::new(player, display_stil);
     console_player.play()?;
@@ -111,7 +111,7 @@ fn run() -> Result<(), String> {
 }
 
 fn print_usage() {
-    println!("ACID64 Console v1.04 - Copyright (c) 2003-2020 Wilfred Bos");
+    println!("ACID64 Console v1.05 - Copyright (c) 2003-2021 Wilfred Bos");
     println!("\nUsage: acid64c <options> <file_name>");
     println!("\n<Options>");
     println!("  -c: adjust clock for devices that don't support PAL/NTSC clock");
