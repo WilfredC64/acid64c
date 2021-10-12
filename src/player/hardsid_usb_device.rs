@@ -16,6 +16,8 @@ const ERROR_MSG_INIT_DEVICE: &str = "Initializing HardSID USB device failed with
 const ERROR_MSG_NO_HARDSID_FOUND: &str = "No HardSID USB device found.";
 const ERROR_MSG_DEVICE_COUNT_CHANGED: &str = "Number of devices is changed.";
 
+const HS_MIN_CYCLE_SID_WRITE: u32 = 4;
+
 pub struct HardsidUsbDeviceFacade {
     pub hs_device: HardsidUsbDevice
 }
@@ -664,8 +666,8 @@ impl HardsidUsbDevice {
 
             if update_hi_freq {
                 self.push_write(DeviceCommand::Write, 1 + voice_base + reg_base, (scaled_freq >> 8) as u8, 0);
-                self.create_delay(MIN_CYCLE_SID_WRITE);
-                self.cycles_to_compensate += MIN_CYCLE_SID_WRITE;
+                self.create_delay(HS_MIN_CYCLE_SID_WRITE);
+                self.cycles_to_compensate += HS_MIN_CYCLE_SID_WRITE;
             }
             self.push_write(DeviceCommand::Write, 0 + voice_base + reg_base, (scaled_freq & 0xff) as u8, 0);
         }
@@ -739,13 +741,13 @@ impl HardsidUsbDevice {
             cycles
         };
 
-        if cycles > MIN_CYCLE_SID_WRITE {
-            if cycles - MIN_CYCLE_SID_WRITE > self.cycles_to_compensate {
+        if cycles > HS_MIN_CYCLE_SID_WRITE {
+            if cycles > self.cycles_to_compensate + HS_MIN_CYCLE_SID_WRITE {
                 cycles -= self.cycles_to_compensate;
                 self.cycles_to_compensate = 0;
             } else {
-                self.cycles_to_compensate -= cycles - MIN_CYCLE_SID_WRITE;
-                cycles = MIN_CYCLE_SID_WRITE;
+                self.cycles_to_compensate -= cycles - HS_MIN_CYCLE_SID_WRITE;
+                cycles = HS_MIN_CYCLE_SID_WRITE;
             }
         }
 
@@ -761,11 +763,11 @@ impl HardsidUsbDevice {
             }
         }
 
-        if cycles >= MIN_CYCLE_SID_WRITE {
+        if cycles >= HS_MIN_CYCLE_SID_WRITE {
             self.push_write(DeviceCommand::Delay, 0, 0, cycles);
         } else {
-            self.push_write(DeviceCommand::Delay, 0, 0, MIN_CYCLE_SID_WRITE);
-            self.cycles_to_compensate += MIN_CYCLE_SID_WRITE - cycles;
+            self.push_write(DeviceCommand::Delay, 0, 0, HS_MIN_CYCLE_SID_WRITE);
+            self.cycles_to_compensate += HS_MIN_CYCLE_SID_WRITE - cycles;
         }
     }
 

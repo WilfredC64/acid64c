@@ -25,7 +25,7 @@ const NTSC_CYCLES_PER_SECOND: u32 = 263 * 65 * 60;
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT_NUMBER: &str = "6581";
 
-const MIN_CYCLE_SID_WRITE: u32 = 4;
+const MIN_CYCLE_SID_WRITE: u32 = 8;
 
 const SID_MODEL_8580: i32 = 2;
 
