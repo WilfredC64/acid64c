@@ -12,7 +12,6 @@ dependencies = [
  "get_if_addrs",
  "libloading",
  "timer",
- "winapi 0.3.9",
 ]
 
 [[package]]
