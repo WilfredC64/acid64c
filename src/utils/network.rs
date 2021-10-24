@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2020 Wilfred Bos
+// Copyright (C) 2019 - 2021 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use get_if_addrs::IfAddr;
@@ -9,7 +9,7 @@ pub fn is_local_ip_address(host_name: &str) -> bool {
     if let Some(local_ip_address) = resolve_local_ip(host_name) {
         is_ip_in_local_network(&local_ip_address)
     } else {
-        return false
+        false
     }
 }
 
@@ -51,8 +51,8 @@ fn is_local(host_name: &str) -> bool {
 }
 
 fn mask_ip_address(ip_address: &str, netmask: &str) -> Result<String, String> {
-    let ip_address: Vec<&str> = ip_address.split(".").collect();
-    let netmask: Vec<&str> = netmask.split(".").collect();
+    let ip_address: Vec<&str> = ip_address.split('.').collect();
+    let netmask: Vec<&str> = netmask.split('.').collect();
 
     if ip_address.len() == netmask.len() {
         let mut masked_ip = Vec::new();

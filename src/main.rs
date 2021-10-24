@@ -49,9 +49,7 @@ fn parse_argument_number(arg_name: &str, arg_value: &str) -> Result<i32, String>
 }
 
 fn run() -> Result<(), String> {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() <= 1 {
+    if env::args().count() <= 1 {
         print_usage();
         return Ok(());
     }
@@ -66,7 +64,7 @@ fn run() -> Result<(), String> {
     let mut player = Player::new();
     let device_names = player.get_device_names();
 
-    for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with("-")) {
+    for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with('-')) {
         match &argument[1..2] {
             "c" => {
                 player.set_adjust_clock(true);
@@ -99,8 +97,8 @@ fn run() -> Result<(), String> {
     player.setup_sldb_and_stil(hvsc_location, display_stil)?;
 
     let version = player.get_library_version();
-    if version < 0x204 {
-        return Err("acid64pro.dll version 2.04 or higher required.".to_string());
+    if version < 0x210 {
+        return Err("acid64pro.dll version 2.1.0 or higher required.".to_string());
     }
 
     println!("ACID64 library version v{}.{}.{}", version >> 8, version >> 4 & 0x0f, version & 0x0f);
@@ -124,7 +122,7 @@ fn print_usage() {
 }
 
 fn print_device_names(device_names: Vec<String>) {
-    if device_names.len() > 0 {
+    if !device_names.is_empty() {
         println!("Available devices:");
         for (i, device_name) in device_names.iter().enumerate() {
             println!("{:2}: {}", i + 1, device_name);

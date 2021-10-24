@@ -134,7 +134,7 @@ impl SidDevice for NetworkSidDeviceFacade {
     }
 
     fn reset_sid(&mut self, _dev_nr: i32) {
-        self.ns_device.reset_sid(0);
+        self.ns_device.reset_sid(0, true);
     }
 
     fn reset_all_buffers(&mut self, _dev_nr: i32) {
@@ -292,7 +292,7 @@ impl NetworkSidDevice {
         if self.interface_version >= 2 {
             let device = self.try_flush_buffer(Command::GetConfigInfo, dev_nr, None);
 
-            if device.len() > 0 {
+            if !device.is_empty() {
                 return String::from_utf8(device).unwrap()
                     .replace("JSidDevice10_", "Default")
                     .replace("(", " - ")
@@ -304,12 +304,10 @@ impl NetworkSidDevice {
             }
 
             "Unknown".to_string()
+        } else if dev_nr == 0 {
+            "Default 6581".to_string()
         } else {
-            if dev_nr == 0 {
-                "Default 6581".to_string()
-            } else {
-                "Default 8580".to_string()
-            }
+            "Default 8580".to_string()
         }
     }
 
@@ -342,10 +340,8 @@ impl NetworkSidDevice {
     pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
         self.sid_model = dev_nr;
 
-        if self.interface_version >= 2 {
-            if dev_nr < self.device_count {
-                self.try_flush_buffer(Command::TrySetSidModel, sid_socket, Some(&[dev_nr as u8]));
-            }
+        if self.interface_version >= 2 && dev_nr < self.device_count {
+            self.try_flush_buffer(Command::TrySetSidModel, sid_socket, Some(&[dev_nr as u8]));
         }
     }
 
@@ -442,17 +438,16 @@ impl NetworkSidDevice {
         self.device_reset(0);
 
         for i in 0..self.number_of_sids {
-            self.reset_sid(i);
+            self.reset_sid(i, false);
         }
+
+        self.dummy_write(0, 40000);
+        self.force_flush(0);
     }
 
-    pub fn reset_sid(&mut self, dev_nr: i32) {
+    pub fn reset_sid(&mut self, dev_nr: i32, force_wait_and_flush: bool) {
         if self.number_of_sids > 0 {
             let dev_nr = self.convert_device_number(dev_nr);
-
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x04, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0b, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x12, 0);
 
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x00, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x01, 0);
@@ -460,6 +455,10 @@ impl NetworkSidDevice {
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x08, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0e, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0f, 0);
+
+            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x04, 0);
+            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0b, 0);
+            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x12, 0);
 
             self.reset_sid_register(dev_nr, 0x02);
             self.reset_sid_register(dev_nr, 0x03);
@@ -484,8 +483,10 @@ impl NetworkSidDevice {
             self.reset_sid_register(dev_nr, 0x17);
             self.reset_sid_register(dev_nr, 0x19);
 
-            self.dummy_write(dev_nr, 40000);
-            self.force_flush(dev_nr);
+            if force_wait_and_flush {
+                self.dummy_write(dev_nr, 40000);
+                self.force_flush(dev_nr);
+            }
         }
     }
 
@@ -757,7 +758,7 @@ impl NetworkSidDevice {
 
             match result {
                 Ok(size) => {
-                    if size <= 0 {
+                    if size == 0 {
                         self.disconnect_with_error("Failure during network write.".to_string());
                         return (self.generate_error(), vec![0])
                     }
@@ -765,11 +766,11 @@ impl NetworkSidDevice {
                 },
                 Err(_) => {
                     self.disconnect_with_error("Failure during network write.".to_string());
-                    return (self.generate_error(), vec![0]);
+                    (self.generate_error(), vec![0])
                 }
             }
         } else {
-            return (self.generate_error(), vec![0]);
+            (self.generate_error(), vec![0])
         }
     }
 

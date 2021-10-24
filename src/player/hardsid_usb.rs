@@ -5,7 +5,6 @@
 use libloading::{Library, Symbol};
 
 use std::ffi::CStr;
-use std::ptr::null;
 
 pub const HSID_USB_STATE_OK: HsidUsbState = 1;
 pub const HSID_USB_STATE_BUSY: HsidUsbState = 2;
@@ -113,7 +112,7 @@ impl HardSidUsb {
     }
 
     /// passes a buffer to the kernel driver - async mode only
-    pub fn write_buffer(&self, buffer: &Vec<u8>) -> HsidUsbState {
+    pub fn write_buffer(&self, buffer: &[u8]) -> HsidUsbState {
         unsafe {
             (self.hs_usb_lib.get(b"hardsid_write_buff").unwrap() as Symbol<unsafe extern "C" fn(*const u8, i32) -> HsidUsbState>)(buffer.as_ptr(), buffer.len() as i32)
         }
@@ -136,7 +135,7 @@ impl HardSidUsb {
 
     #[inline]
     unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
-        if text == null() {
+        if text.is_null() {
             None
         } else {
             Some(CStr::from_ptr(text).to_string_lossy().to_string())

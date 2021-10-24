@@ -69,17 +69,17 @@ impl ClockAdjust {
         cycles as u32
     }
 
-    pub fn get_last_scaled_freq(&mut self, voice_index: u8) -> u32 {
+    pub fn get_last_scaled_freq(&self, voice_index: u8) -> u32 {
         self.last_freq[voice_index as usize]
     }
 
     pub fn scale_frequency(&mut self, voice_index: u8) -> u32 {
         let freq = self.freq[voice_index as usize];
         let scaled_freq = if self.clock == SidClock::Ntsc {
-            let freq = freq + (freq * NTSC_FREQ_SCALE >> 16);
+            let freq = freq + ((freq * NTSC_FREQ_SCALE) >> 16);
             min(freq, 0xffff)
         } else {
-            freq - (freq * PAL_FREQ_SCALE >> 16)
+            freq - ((freq * PAL_FREQ_SCALE) >> 16)
         };
 
         self.last_freq[voice_index as usize] = scaled_freq;

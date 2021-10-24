@@ -232,10 +232,10 @@ impl Player
     fn process_player_commands(&mut self) {
         let recv_result = self.cmd_receiver.try_recv();
 
-        if recv_result.is_ok() {
+        if let Ok(result) = recv_result {
             self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
-            match recv_result.unwrap() {
+            match result {
                 PlayerCommand::Play => {
                     if self.paused {
                         self.sid_device.as_mut().unwrap().reset_sid(self.device_number);
@@ -271,16 +271,16 @@ impl Player
             device_names.push(device_name);
         }
 
-        self.set_device_names(&mut device_names);
+        self.set_device_names(&device_names);
     }
 
-    fn set_device_names(&mut self, new_device_names: &Vec<String>) {
+    fn set_device_names(&mut self, new_device_names: &[String]) {
         let mut device_names = self.device_names.lock().unwrap();
         device_names.clear();
-        device_names.clone_from(&new_device_names);
+        device_names.extend_from_slice(new_device_names);
     }
 
-    fn get_cycles_per_second(&mut self) -> u32 {
+    fn get_cycles_per_second(&self) -> u32 {
         let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
 
         match c64_model {
@@ -289,7 +289,7 @@ impl Player
         }
     }
 
-    pub fn get_song_length(&mut self) -> i32 {
+    pub fn get_song_length(&self) -> i32 {
         self.acid64_lib.get_song_length(self.c64_instance)
     }
 
@@ -297,27 +297,27 @@ impl Player
         self.filename.clone()
     }
 
-    pub fn get_sid_model(&mut self) -> i32 {
+    pub fn get_sid_model(&self) -> i32 {
         self.acid64_lib.get_sid_model(self.c64_instance, 0)
     }
 
-    pub fn get_c64_version(&mut self) -> i32 {
+    pub fn get_c64_version(&self) -> i32 {
         self.acid64_lib.get_c64_version(self.c64_instance)
     }
 
-    pub fn get_title(&mut self) -> String {
+    pub fn get_title(&self) -> String {
         self.acid64_lib.get_title(self.c64_instance)
     }
 
-    pub fn get_author(&mut self) -> String {
+    pub fn get_author(&self) -> String {
         self.acid64_lib.get_author(self.c64_instance)
     }
 
-    pub fn get_released(&mut self) -> String {
+    pub fn get_released(&self) -> String {
         self.acid64_lib.get_released(self.c64_instance)
     }
 
-    pub fn get_stil_entry(&mut self) -> Option<String> {
+    pub fn get_stil_entry(&self) -> Option<String> {
         self.acid64_lib.get_stil_entry(self.c64_instance)
     }
 
@@ -329,7 +329,7 @@ impl Player
         self.song_number
     }
 
-    pub fn get_number_of_songs(&mut self) -> i32 {
+    pub fn get_number_of_songs(&self) -> i32 {
         self.acid64_lib.get_number_of_songs(self.c64_instance)
     }
 
@@ -383,7 +383,7 @@ impl Player
         let is_loaded = self.acid64_lib.load_file(self.c64_instance, &filename);
 
         if !is_loaded {
-            Err(format!("File '{}' could not be loaded.", filename).to_string())
+            Err(format!("File '{}' could not be loaded.", filename))
         } else {
             self.filename = Some(filename);
             self.acid64_lib.skip_silence(self.c64_instance, true);
@@ -395,7 +395,7 @@ impl Player
         }
     }
 
-    pub fn get_number_of_sids(&mut self) -> i32 {
+    pub fn get_number_of_sids(&self) -> i32 {
         self.acid64_lib.get_number_of_sids(self.c64_instance)
     }
 
@@ -428,7 +428,7 @@ impl Player
     fn write_last_sid_writes(&mut self) {
         let number_of_sids = self.acid64_lib.get_number_of_sids(self.c64_instance);
 
-        for sid_number in 1..=number_of_sids  {
+        for sid_number in 1..=number_of_sids {
             self.write_voice_regs(1, sid_number);
             self.write_voice_regs(2, sid_number);
             self.write_voice_regs(3, sid_number);
@@ -445,7 +445,7 @@ impl Player
         self.write_last_sid_write(sid_base + reg_base + 0x03);
         self.write_last_sid_write(sid_base + reg_base + 0x02);
         self.write_last_sid_write(sid_base + reg_base + 0x01);
-        self.write_last_sid_write(sid_base + reg_base + 0x00);
+        self.write_last_sid_write(sid_base + reg_base);
         self.write_last_sid_write(sid_base + reg_base + 0x06);
         self.write_last_sid_write(sid_base + reg_base + 0x05);
         self.write_last_sid_write(sid_base + reg_base + 0x04);
@@ -462,8 +462,8 @@ impl Player
     }
 
     fn get_hvsc_root_location(&self, hvsc_location: Option<String>) -> Result<Option<String>, String> {
-        if hvsc_location.is_some() {
-            let hvsc_root = hvsc::get_hvsc_root(&hvsc_location.unwrap());
+        if let Some(hvsc_location) = hvsc_location {
+            let hvsc_root = hvsc::get_hvsc_root(&hvsc_location);
 
             if hvsc_root.is_none() {
                 return Err("Specified HVSC location is not valid.".to_string());
@@ -505,7 +505,7 @@ impl Player
         Ok(())
     }
 
-    pub fn get_next_song(&mut self) -> i32 {
+    pub fn get_next_song(&self) -> i32 {
         let number_of_songs = self.get_number_of_songs();
 
         if self.song_number == number_of_songs - 1 {
@@ -533,7 +533,7 @@ impl Player
         let number_of_songs = self.acid64_lib.get_number_of_songs(self.c64_instance);
 
         if song_number < 0 || song_number >= number_of_songs {
-            return Err(format!("Song number {} doesn't exist.", song_number + 1).to_string());
+            return Err(format!("Song number {} doesn't exist.", song_number + 1));
         }
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);

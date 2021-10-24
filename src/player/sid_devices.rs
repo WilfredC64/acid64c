@@ -165,13 +165,12 @@ impl SidDevices {
 
         let ns_connect_result = self.try_connect_network_device(ip_address, port);
 
-        if self.sid_devices.len() == 0 {
-            let mut errors = vec![];
+        if self.sid_devices.is_empty() {
+            let mut errors = vec![ns_connect_result.err().unwrap_or_default()];
 
             #[cfg(target_os = "windows")]
-            errors.push(hs_connect_result.err().unwrap_or("".to_string()));
+            errors.push(hs_connect_result.err().unwrap_or_default());
 
-            errors.push(ns_connect_result.err().unwrap_or("".to_string()));
             Err(errors.join(" | "))
         } else {
             self.set_native_device_clock(self.use_native_device_clock);
@@ -320,11 +319,11 @@ impl SidDevices {
         }
     }
 
-    pub fn get_device_count(&mut self, _dev_nr: i32) -> i32 {
+    pub fn get_device_count(&self, _dev_nr: i32) -> i32 {
         self.device_count
     }
 
-    pub fn get_device_info(&mut self, dev_nr: i32) -> String {
+    pub fn get_device_info(&self, dev_nr: i32) -> String {
         self.device_name[dev_nr as usize].clone()
     }
 

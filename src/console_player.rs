@@ -59,7 +59,7 @@ impl ConsolePlayer {
                         let mut song_number = keyboard::convert_num_key_to_number(key);
                         let invalid_song_nr = song_number != -1 && number_of_tunes - 1 < song_number;
 
-                        if invalid_song_nr == false || song_number == -1 {
+                        if !invalid_song_nr || song_number == -1 {
                             self.stop_player(player_thread);
                             song_number = match key {
                                 '+' | '=' => self.player.lock().unwrap().get_next_song(),
@@ -96,7 +96,7 @@ impl ConsolePlayer {
         Ok(())
     }
 
-    fn pause_or_resume_player(&mut self) -> () {
+    fn pause_or_resume_player(&mut self) {
         if self.paused {
             self.send_command(PlayerCommand::Play);
         } else {
@@ -118,10 +118,9 @@ impl ConsolePlayer {
         self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
         let player_clone = Arc::clone(&self.player);
-        let player_thread = thread::spawn(move || {
+        thread::spawn(move || {
             player_clone.lock().unwrap().play();
-        });
-        player_thread
+        })
     }
 
     #[inline]
@@ -211,12 +210,12 @@ impl ConsolePlayer {
     }
 
     fn print_sid_description(&mut self) {
-        let mut player = self.player.lock().unwrap();
+        let player = self.player.lock().unwrap();
         let title = player.get_title();
         let author = player.get_author();
         let released = player.get_released();
 
-        if (title.len() > 32) && (author.len() == 0) && (released.len() == 0) {
+        if (title.len() > 32) && author.is_empty() && released.is_empty() {
             println!("\n       Sidplayer 64 info");
             println!("================================");
             println!("{}", title.trim_end());

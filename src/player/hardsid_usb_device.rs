@@ -222,7 +222,8 @@ impl HardsidUsbDevice {
         let usb_device = hardsid_usb.unwrap();
 
         if !usb_device.init_sidplay_mode() {
-            let error = usb_device.get_last_error().unwrap_or("unknown".to_string());
+            let unknown_device = "unknown".to_string();
+            let error = usb_device.get_last_error().unwrap_or(unknown_device);
             Err(format!("{} {}.", ERROR_MSG_INIT_DEVICE.to_string(), error))
         } else {
             let dev_count = usb_device.get_dev_count();
@@ -399,7 +400,7 @@ impl HardsidUsbDevice {
             let reg_base = self.device_base_reg[dev_nr as usize];
 
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x00, 0);
+            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0f, 0);
@@ -451,7 +452,7 @@ impl HardsidUsbDevice {
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
 
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x00, 0);
+            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
@@ -588,16 +589,13 @@ impl HardsidUsbDevice {
     }
 
     pub fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
-        if !self.sid_write_fifo.is_empty() {
-            self.process_write_fifo(dev_nr)
-        } else {
+        if self.sid_write_fifo.is_empty() {
             let reg = self.map_to_supported_device(dev_nr, reg);
 
             self.create_delay(cycles_input);
             self.create_write(reg, data);
-
-            self.process_write_fifo(dev_nr)
         }
+        self.process_write_fifo(dev_nr)
     }
 
     #[inline]
@@ -669,7 +667,7 @@ impl HardsidUsbDevice {
                 self.create_delay(HS_MIN_CYCLE_SID_WRITE);
                 self.cycles_to_compensate += HS_MIN_CYCLE_SID_WRITE;
             }
-            self.push_write(DeviceCommand::Write, 0 + voice_base + reg_base, (scaled_freq & 0xff) as u8, 0);
+            self.push_write(DeviceCommand::Write, voice_base + reg_base, (scaled_freq & 0xff) as u8, 0);
         }
     }
 
