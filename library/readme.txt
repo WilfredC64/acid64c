@@ -1,5 +1,5 @@
 
-                    ACID 64 Player Library v2.1.0
+                    ACID 64 Player Library v2.1.1
 
                  Copyright (c) 2008-2021 Wilfred Bos
                      Programmed by: Wilfred Bos
@@ -76,12 +76,14 @@ The library supports the following methods (in Delphi code):
   function getSidAddress(c64: Pointer; sidNr: Integer): Integer; stdcall; external 'acid64pro';
   function getFreeMemoryAddress(c64: Pointer): Integer; stdcall; external 'acid64pro';
   function getFreeMemoryEndAddress(c64: Pointer): Integer; stdcall; external 'acid64pro';
+  procedure getLastSidWrites(pBuffer: Pointer; size: Integer); stdcall; external 'acid64pro';
+  procedure getLastSidWriteTimes(pBuffer: Pointer; size: Integer); stdcall; external 'acid64pro';
 
 
 getVersion
 ==========
 The 'getVersion' method returns the version number of the library in hex.
-E.g. 0x210 means version 2.1.0
+E.g. 0x211 means version 2.1.1
 
 
 createC64Instance
@@ -659,3 +661,23 @@ getFreeMemoryEndAddress
 The 'getFreeMemoryEndAddress' method will retrieve the memory location of the
 end of the free area that is not used by the SID tune. To get the start address
 of the area you can call the 'getFreeMemoryAddress' method.
+
+
+getLastSidWrites
+================
+The 'getLastSidWrites' receives the last written SID data.
+
+The passed pointer is the pointer to the buffer where the data will be written
+to. The passed size is the size of the buffer. The buffer size has a maximum
+of 256 bytes since the buffer holds data for maximum 8 SID chips.
+
+
+getLastSidWriteTimes
+====================
+The 'getLastSidWriteTimes' receives time info of the last written SID data in
+cycles. The time is the number of cycles relative to the start of the tune and
+is returned as an unsigned 32-bit integer;
+
+The passed pointer is the pointer to the buffer where the data will be written
+to. The passed size is the size of the buffer. The buffer size has a maximum
+of 256 integers since the buffer holds data for maximum 8 SID chips.

@@ -80,16 +80,16 @@ impl SidDevice for SidDevicesFacade {
         self.devices.silent_all_sids(dev_nr, write_volume);
     }
 
-    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        self.devices.silent_sid(dev_nr, write_volume);
+    fn silent_active_sids(&mut self, dev_nr: i32, write_volume: bool) {
+        self.devices.silent_active_sids(dev_nr, write_volume);
     }
 
     fn reset_all_sids(&mut self, dev_nr: i32) {
         self.devices.reset_all_sids(dev_nr);
     }
 
-    fn reset_sid(&mut self, dev_nr: i32) {
-        self.devices.reset_sid(dev_nr);
+    fn reset_active_sids(&mut self, dev_nr: i32) {
+        self.devices.reset_active_sids(dev_nr);
     }
 
     fn reset_all_buffers(&mut self, dev_nr: i32) {
@@ -104,16 +104,16 @@ impl SidDevice for SidDevicesFacade {
         self.devices.disable_turbo_mode(dev_nr);
     }
 
-    fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32) {
-        self.devices.dummy_write(dev_nr, cycles_input);
+    fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
+        self.devices.dummy_write(dev_nr, cycles);
     }
 
-    fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
-        self.devices.write(dev_nr, cycles_input, reg, data);
+    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+        self.devices.write(dev_nr, cycles, reg, data);
     }
 
-    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
-        self.devices.try_write(dev_nr, cycles_input, reg, data)
+    fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.devices.try_write(dev_nr, cycles, reg, data)
     }
 
     fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
@@ -161,7 +161,7 @@ impl SidDevices {
 
     pub fn connect(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
         #[cfg(target_os = "windows")]
-        let hs_connect_result = self.try_connect_hardsid_device();
+            let hs_connect_result = self.try_connect_hardsid_device();
 
         let ns_connect_result = self.try_connect_network_device(ip_address, port);
 
@@ -169,7 +169,7 @@ impl SidDevices {
             let mut errors = vec![ns_connect_result.err().unwrap_or_default()];
 
             #[cfg(target_os = "windows")]
-            errors.push(hs_connect_result.err().unwrap_or_default());
+                errors.push(hs_connect_result.err().unwrap_or_default());
 
             Err(errors.join(" | "))
         } else {
@@ -381,10 +381,10 @@ impl SidDevices {
         self.sid_devices[mapped_dev_nr as usize].silent_all_sids(mapped_sid_nr as i32, write_volume);
     }
 
-    pub fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
+    pub fn silent_active_sids(&mut self, dev_nr: i32, write_volume: bool) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].silent_sid(mapped_sid_nr as i32, write_volume);
+        self.sid_devices[mapped_dev_nr as usize].silent_active_sids(mapped_sid_nr as i32, write_volume);
     }
 
     pub fn reset_all_sids(&mut self, dev_nr: i32) {
@@ -393,10 +393,10 @@ impl SidDevices {
         self.sid_devices[mapped_dev_nr as usize].reset_all_sids(mapped_sid_nr as i32);
     }
 
-    pub fn reset_sid(&mut self, dev_nr: i32) {
+    pub fn reset_active_sids(&mut self, dev_nr: i32) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].reset_sid(mapped_sid_nr as i32);
+        self.sid_devices[mapped_dev_nr as usize].reset_active_sids(mapped_sid_nr as i32);
     }
 
     pub fn reset_all_buffers(&mut self, dev_nr: i32) {
@@ -417,22 +417,22 @@ impl SidDevices {
         self.sid_devices[mapped_dev_nr as usize].disable_turbo_mode(mapped_sid_nr as i32);
     }
 
-    pub fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32) {
+    pub fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].dummy_write(mapped_sid_nr as i32, cycles_input);
+        self.sid_devices[mapped_dev_nr as usize].dummy_write(mapped_sid_nr as i32, cycles);
     }
 
-    pub fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
+    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].write(mapped_sid_nr as i32, cycles_input, reg, data);
+        self.sid_devices[mapped_dev_nr as usize].write(mapped_sid_nr as i32, cycles, reg, data);
     }
 
-    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
+    fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].try_write(mapped_sid_nr as i32, cycles_input, reg, data)
+        self.sid_devices[mapped_dev_nr as usize].try_write(mapped_sid_nr as i32, cycles, reg, data)
     }
 
     fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {

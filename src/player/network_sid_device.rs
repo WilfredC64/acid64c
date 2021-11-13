@@ -125,16 +125,16 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.silent_all_sids(write_volume);
     }
 
-    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        self.ns_device.silent_sid(dev_nr, write_volume);
+    fn silent_active_sids(&mut self, _dev_nr: i32, write_volume: bool) {
+        self.ns_device.silent_all_sids(write_volume);
     }
 
     fn reset_all_sids(&mut self, _dev_nr: i32) {
         self.ns_device.reset_all_sids();
     }
 
-    fn reset_sid(&mut self, _dev_nr: i32) {
-        self.ns_device.reset_sid(0, true);
+    fn reset_active_sids(&mut self, _dev_nr: i32) {
+        self.ns_device.reset_all_sids();
     }
 
     fn reset_all_buffers(&mut self, _dev_nr: i32) {
@@ -149,16 +149,16 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.disable_turbo_mode();
     }
 
-    fn dummy_write(&mut self, _dev_nr: i32, cycles_input: u32) {
-        self.ns_device.dummy_write(0, cycles_input);
+    fn dummy_write(&mut self, _dev_nr: i32, cycles: u32) {
+        self.ns_device.dummy_write(0, cycles);
     }
 
-    fn write(&mut self, _dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
-        self.ns_device.write(0, cycles_input, reg, data);
+    fn write(&mut self, _dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+        self.ns_device.write(0, cycles, reg, data);
     }
 
-    fn try_write(&mut self, _dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
-        self.ns_device.try_write(0, cycles_input, reg, data)
+    fn try_write(&mut self, _dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.ns_device.try_write(0, cycles, reg, data)
     }
 
     fn retry_write(&mut self, _dev_nr: i32) -> DeviceResponse {
@@ -383,34 +383,31 @@ impl NetworkSidDevice {
         for i in 0..self.number_of_sids {
             self.silent_sid(i as i32, write_volume);
         }
+        self.force_flush(0);
     }
 
-    pub fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        if self.number_of_sids > 0 {
-            let dev_nr = self.convert_device_number(dev_nr);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x00, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x01, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x07, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x08, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0e, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0f, 0);
+    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
+        let dev_nr = self.convert_device_number(dev_nr);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x00, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x01, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x07, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x08, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0e, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0f, 0);
 
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x04, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0b, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x12, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x04, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0b, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x12, 0);
 
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x05, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x06, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0c, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0d, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x13, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x14, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x05, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x06, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0c, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0d, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x13, 0);
+        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x14, 0);
 
-            if write_volume {
-                self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x18, 0);
-            }
-
-            self.force_flush(dev_nr);
+        if write_volume {
+            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x18, 0);
         }
     }
 
@@ -438,14 +435,14 @@ impl NetworkSidDevice {
         self.device_reset(0);
 
         for i in 0..self.number_of_sids {
-            self.reset_sid(i, false);
+            self.reset_sid(i);
         }
 
         self.dummy_write(0, 40000);
         self.force_flush(0);
     }
 
-    pub fn reset_sid(&mut self, dev_nr: i32, force_wait_and_flush: bool) {
+    fn reset_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
             let dev_nr = self.convert_device_number(dev_nr);
 
@@ -482,11 +479,6 @@ impl NetworkSidDevice {
             self.reset_sid_register(dev_nr, 0x16);
             self.reset_sid_register(dev_nr, 0x17);
             self.reset_sid_register(dev_nr, 0x19);
-
-            if force_wait_and_flush {
-                self.dummy_write(dev_nr, 40000);
-                self.force_flush(dev_nr);
-            }
         }
     }
 
@@ -513,12 +505,12 @@ impl NetworkSidDevice {
         self.turbo_mode = false;
     }
 
-    pub fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32) {
-        self.write(dev_nr, cycles_input, 0x1e, 0);
+    pub fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
+        self.write(dev_nr, cycles, 0x1e, 0);
     }
 
-    pub fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
-        let cycles = self.do_delay(dev_nr, cycles_input);
+    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+        let cycles = self.do_delay(dev_nr, cycles);
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
@@ -526,8 +518,8 @@ impl NetworkSidDevice {
         }
     }
 
-    pub fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
-        let cycles = self.do_delay(dev_nr, cycles_input);
+    pub fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        let cycles = self.do_delay(dev_nr, cycles);
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
@@ -547,12 +539,12 @@ impl NetworkSidDevice {
     }
 
     #[inline]
-    fn do_delay(&mut self, dev_nr: i32, cycles_input: u32) -> u32 {
-        if cycles_input > 0xffff {
+    fn do_delay(&mut self, dev_nr: i32, cycles: u32) -> u32 {
+        if cycles > 0xffff {
             let dev_nr = self.convert_device_number(dev_nr);
-            self.delay(dev_nr, cycles_input, 0x100)
+            self.delay(dev_nr, cycles, 0x100)
         } else {
-            cycles_input
+            cycles
         }
     }
 

@@ -5,6 +5,7 @@ use encoding::{Encoding, DecoderTrap, EncoderTrap};
 use encoding::all::ISO_8859_1;
 use libloading::{Library, Symbol};
 use std::ffi::{CString, CStr};
+use std::mem;
 
 #[cfg(target_arch = "x86")]
 pub struct Acid64Library {
@@ -386,6 +387,18 @@ impl Acid64Library {
     pub fn get_free_memory_end_address(&self, c64_instance: usize) -> i32 {
         unsafe {
             (self.a64lib.get(b"getFreeMemoryEndAddress").unwrap() as Symbol<unsafe extern "stdcall" fn(usize) -> i32>)(c64_instance)
+        }
+    }
+
+    pub fn get_last_sid_writes(&self, c64_instance: usize, buffer: &mut [u8; 256]) {
+        unsafe {
+            (self.a64lib.get(b"getLastSidWrites").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u8, i32)>)(c64_instance, buffer.as_mut_ptr(), buffer.len() as i32);
+        }
+    }
+
+    pub fn get_last_sid_write_times(&self, c64_instance: usize, buffer: &mut [u32; 256]) {
+        unsafe {
+            (self.a64lib.get(b"getLastSidWriteTimes").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u32, i32)>)(c64_instance, buffer.as_mut_ptr(), mem::size_of_val(buffer) as i32);
         }
     }
 

@@ -87,16 +87,16 @@ impl SidDevice for HardsidUsbDeviceFacade {
         self.hs_device.silent_all_sids(dev_nr, write_volume);
     }
 
-    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        self.hs_device.silent_sid(dev_nr, write_volume);
+    fn silent_active_sids(&mut self, dev_nr: i32, write_volume: bool) {
+        self.hs_device.silent_active_sids(dev_nr, write_volume);
     }
 
     fn reset_all_sids(&mut self, dev_nr: i32) {
         self.hs_device.reset_all_sids(dev_nr);
     }
 
-    fn reset_sid(&mut self, dev_nr: i32) {
-        self.hs_device.reset_sid(dev_nr);
+    fn reset_active_sids(&mut self, dev_nr: i32) {
+        self.hs_device.reset_active_sids(dev_nr);
     }
 
     fn reset_all_buffers(&mut self, dev_nr: i32) {
@@ -111,16 +111,16 @@ impl SidDevice for HardsidUsbDeviceFacade {
         self.hs_device.disable_turbo_mode();
     }
 
-    fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32) {
-        self.hs_device.dummy_write(dev_nr, cycles_input);
+    fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
+        self.hs_device.dummy_write(dev_nr, cycles);
     }
 
-    fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
-        self.hs_device.write(dev_nr, cycles_input, reg, data);
+    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+        self.hs_device.write(dev_nr, cycles, reg, data);
     }
 
-    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
-        self.hs_device.try_write(dev_nr, cycles_input, reg, data)
+    fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.hs_device.try_write(dev_nr, cycles, reg, data)
     }
 
     fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
@@ -150,11 +150,11 @@ pub struct SidWrite {
     pub command: DeviceCommand,
     pub reg: u8,
     pub data: u8,
-    pub cycles: u32
+    pub cycles: u16
 }
 
 impl SidWrite {
-    pub fn new(command: DeviceCommand, reg: u8, data: u8, cycles: u32) -> SidWrite {
+    pub fn new(command: DeviceCommand, reg: u8, data: u8, cycles: u16) -> SidWrite {
         SidWrite {
             command,
             reg,
@@ -343,18 +343,23 @@ impl HardsidUsbDevice {
 
     pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
         if self.is_connected() {
-            let old_dev_nr = self.device_mappings[sid_socket as usize];
+            let mut new_dev_nr = dev_nr + sid_socket;
+            let physical_dev_nr = self.device_id[dev_nr as usize];
 
-            for i in 0..self.device_mappings.len() {
-                if self.device_mappings[i] == dev_nr {
-                    self.device_mappings[i] = old_dev_nr;
-                    break;
-                }
+            let mut dev_iter = self.device_id.iter();
+            let physical_dev_nr_start = dev_iter.position(|&v| v == physical_dev_nr).unwrap_or(0) as i32;
+            let mut dev_iter = self.device_id.iter();
+            let physical_dev_nr_end = dev_iter.rposition(|&v| v == physical_dev_nr).unwrap_or(0) as i32;
+
+            if new_dev_nr > physical_dev_nr_end {
+                new_dev_nr = new_dev_nr - physical_dev_nr_end + physical_dev_nr_start - 1;
             }
 
-            self.device_mappings[sid_socket as usize] = dev_nr;
-            if old_dev_nr != dev_nr || !self.device_init_done[dev_nr as usize] {
-                self.wait_for_uplay_activation(dev_nr);
+            let old_dev_nr = self.device_mappings[sid_socket as usize];
+
+            self.device_mappings[sid_socket as usize] = new_dev_nr;
+            if old_dev_nr != new_dev_nr || !self.device_init_done[new_dev_nr as usize] {
+                self.wait_for_uplay_activation(new_dev_nr);
             }
         }
     }
@@ -383,46 +388,66 @@ impl HardsidUsbDevice {
                 let physical_dev_nr = self.device_id[dev_nr as usize];
                 for i in 0..self.device_id.len() {
                     if self.device_id[i] == physical_dev_nr {
-                        self.silent_sid(i as i32, write_volume);
+                        let base_reg = self.device_base_reg[i];
+                        self.silent_sid(i as i32, base_reg, write_volume);
                         if !self.is_connected() {
                             break;
                         }
                     }
                 }
             } else {
-                self.silent_sid(dev_nr, write_volume);
-            }
-        }
-    }
-
-    pub fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        if self.number_of_sids > 0 && self.is_connected() {
-            let reg_base = self.device_base_reg[dev_nr as usize];
-
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0f, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0e, 0);
-
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x05, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x06, 0);
-
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0c, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0d, 0);
-
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x13, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x14, 0);
-
-            if write_volume {
-                self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x18, 0);
+                let base_reg = self.device_base_reg[dev_nr as usize];
+                self.silent_sid(dev_nr, base_reg, write_volume);
             }
 
             self.force_flush(dev_nr);
+        }
+    }
+
+    pub fn silent_active_sids(&mut self, dev_nr: i32, write_volume: bool) {
+        if self.is_connected() {
+            if self.device_type[dev_nr as usize] == DEV_TYPE_HS_4U {
+                for sid_nr in 0..self.number_of_sids as u8 {
+                    let mapped_dev_nr = self.device_mappings[sid_nr as usize];
+                    let base_reg = self.device_base_reg[mapped_dev_nr as usize];
+                    self.silent_sid(dev_nr, base_reg, write_volume);
+                    if !self.is_connected() {
+                        break;
+                    }
+                }
+            } else {
+                let base_reg = self.device_base_reg[dev_nr as usize];
+                self.silent_sid(dev_nr, base_reg, write_volume);
+            }
+
+            self.force_flush(dev_nr);
+        }
+    }
+
+    fn silent_sid(&mut self, dev_nr: i32, reg_base: u8, write_volume: bool) {
+        if self.number_of_sids > 0 && self.is_connected() {
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0f, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0e, 0);
+
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x05, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x06, 0);
+
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0c, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0d, 0);
+
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x13, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x14, 0);
+
+            if write_volume {
+                self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x18, 0);
+            }
         }
     }
 
@@ -432,32 +457,57 @@ impl HardsidUsbDevice {
                 let physical_dev_nr = self.device_id[dev_nr as usize];
                 for i in 0..self.device_id.len() {
                     if self.device_id[i] == physical_dev_nr {
-                        self.reset_sid(i as i32);
+                        let base_reg = self.device_base_reg[i];
+
+                        self.reset_sid(i as i32, base_reg, false);
                         if !self.is_connected() {
                             break;
                         }
                     }
                 }
+                self.dummy_write(dev_nr, 40000);
+                self.force_flush(dev_nr);
             } else {
-                self.reset_sid(dev_nr);
+                let base_reg = self.device_base_reg[dev_nr as usize];
+                self.reset_sid(dev_nr, base_reg, true);
             }
         }
     }
 
-    pub fn reset_sid(&mut self, dev_nr: i32) {
+    pub fn reset_active_sids(&mut self, dev_nr: i32) {
+        if self.is_connected() {
+            if self.device_type[dev_nr as usize] == DEV_TYPE_HS_4U {
+                for sid_nr in 0..self.number_of_sids as u8 {
+                    let mapped_dev_nr = self.device_mappings[sid_nr as usize];
+                    let base_reg = self.device_base_reg[mapped_dev_nr as usize];
+
+                    self.reset_sid(dev_nr, base_reg, false);
+                    if !self.is_connected() {
+                        break;
+                    }
+                }
+
+                self.dummy_write(dev_nr, 40000);
+                self.force_flush(dev_nr);
+            } else {
+                let base_reg = self.device_base_reg[dev_nr as usize];
+                self.reset_sid(dev_nr, base_reg, true);
+            }
+        }
+    }
+
+    fn reset_sid(&mut self, dev_nr: i32, reg_base: u8, force_wait_and_flush: bool) {
         if self.number_of_sids > 0 && self.is_connected() {
-            let reg_base = self.device_base_reg[dev_nr as usize];
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0e, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0f, 0);
 
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
-
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0e, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0f, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
 
             self.reset_sid_register(dev_nr, reg_base + 0x02);
             self.reset_sid_register(dev_nr, reg_base + 0x03);
@@ -482,17 +532,19 @@ impl HardsidUsbDevice {
             self.reset_sid_register(dev_nr, reg_base + 0x17);
             self.reset_sid_register(dev_nr, reg_base + 0x19);
 
-            self.dummy_write(dev_nr, 40000);
-            self.force_flush(dev_nr);
+            if force_wait_and_flush {
+                self.dummy_write(dev_nr, 40000);
+                self.force_flush(dev_nr);
+            }
         }
     }
 
     #[inline]
     fn reset_sid_register(&mut self, dev_nr: i32, reg: u8) {
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0xff);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x08);
+        self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0xff);
+        self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x08);
         self.dummy_write(dev_nr, 50);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x00);
+        self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x00);
     }
 
     pub fn reset_all_buffers(&mut self, dev_nr: i32) {
@@ -510,26 +562,16 @@ impl HardsidUsbDevice {
         self.turbo_mode = false;
     }
 
-    pub fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32) {
+    pub fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
         if self.is_connected() {
             let reg_base = self.device_base_reg[dev_nr as usize];
-            self.write(dev_nr, cycles_input, reg_base + 0x1e, 0);
+            self.write(dev_nr, cycles, reg_base + 0x1e, 0);
         }
     }
 
     #[inline]
     fn are_multiple_sid_chips_supported(&mut self, dev_nr: i32) -> bool {
         self.device_type[dev_nr as usize] == DEV_TYPE_HS_4U
-    }
-
-    #[inline]
-    fn map_to_supported_device(&mut self, dev_nr: i32, reg: u8) -> u8 {
-        if self.number_of_sids > 1 && !self.are_multiple_sid_chips_supported(dev_nr) && reg >= 0x20 {
-            // ignore second SID chip for devices that don't support accessing multiple SID chip simultaneously
-            0x1e
-        } else {
-            reg
-        }
     }
 
     pub fn force_flush(&mut self, dev_nr: i32) {
@@ -548,25 +590,56 @@ impl HardsidUsbDevice {
         }
     }
 
-    pub fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) {
+    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
         if self.is_connected() {
-            let reg = self.map_to_supported_device(dev_nr, reg);
+            let reg = self.map_device_to_reg(dev_nr, reg);
+            self.write_direct(dev_nr, cycles, reg, data);
+        }
+    }
 
-            self.create_delay(cycles_input);
-            self.create_write(reg, data);
+    #[inline]
+    fn map_device_to_reg(&mut self, dev_nr: i32, reg: u8) -> u8 {
+        let reg = self.filter_reg_for_unsupported_writes(dev_nr, reg);
+        let mapped_dev_nr = self.map_reg_to_device(reg);
+        let base_reg = self.device_base_reg[mapped_dev_nr as usize];
+        (reg & 0x1f) | base_reg
+    }
 
-            while !self.sid_write_fifo.is_empty() {
-                let sid_write = self.sid_write_fifo.pop_front().unwrap();
-                match sid_write.command {
-                    DeviceCommand::Delay => self.try_delay_sync(dev_nr, sid_write.cycles as u16),
-                    DeviceCommand::Write => self.try_write_sync(dev_nr, sid_write.reg, sid_write.data)
-                }
+    #[inline]
+    fn filter_reg_for_unsupported_writes(&mut self, dev_nr: i32, reg: u8) -> u8 {
+        if self.number_of_sids > 1 && !self.are_multiple_sid_chips_supported(dev_nr) && reg >= 0x20 {
+            // ignore second SID chip for devices that don't support accessing multiple SID chip simultaneously
+            0x1e
+        } else {
+            reg
+        }
+    }
+
+    #[inline]
+    fn map_reg_to_device(&mut self, reg: u8) -> i32 {
+        let sid_nr = reg >> 5;
+        if self.number_of_sids > 1 && sid_nr < self.sid_count as u8 {
+            self.device_mappings[sid_nr as usize]
+        } else {
+            self.device_mappings[0]
+        }
+    }
+
+    fn write_direct(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+        self.create_delay(cycles);
+        self.create_write(reg, data);
+
+        while !self.sid_write_fifo.is_empty() {
+            let sid_write = self.sid_write_fifo.pop_front().unwrap();
+            match sid_write.command {
+                DeviceCommand::Delay => self.try_delay_sync(dev_nr, sid_write.cycles),
+                DeviceCommand::Write => self.try_write_sync(dev_nr, sid_write.reg, sid_write.data)
             }
         }
     }
 
     #[inline]
-    fn push_write(&mut self, command: DeviceCommand, reg: u8, data: u8, cycles: u32) {
+    fn push_write(&mut self, command: DeviceCommand, reg: u8, data: u8, cycles: u16) {
         let sid_write = SidWrite::new(command, reg, data, cycles);
         self.sid_write_fifo.push_back(sid_write);
     }
@@ -588,11 +661,10 @@ impl HardsidUsbDevice {
         }
     }
 
-    pub fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse {
+    pub fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
         if self.sid_write_fifo.is_empty() {
-            let reg = self.map_to_supported_device(dev_nr, reg);
-
-            self.create_delay(cycles_input);
+            let reg = self.map_device_to_reg(dev_nr, reg);
+            self.create_delay(cycles);
             self.create_write(reg, data);
         }
         self.process_write_fifo(dev_nr)
@@ -604,7 +676,7 @@ impl HardsidUsbDevice {
             let sid_write = self.sid_write_fifo.pop_front().unwrap();
 
             let device_state = match sid_write.command {
-                DeviceCommand::Delay => self.try_delay_async(dev_nr, sid_write.cycles as u16),
+                DeviceCommand::Delay => self.try_delay_async(dev_nr, sid_write.cycles),
                 DeviceCommand::Write => self.try_write_async(dev_nr, sid_write.reg, sid_write.data)
             };
 
@@ -672,25 +744,12 @@ impl HardsidUsbDevice {
     }
 
     #[inline]
-    fn convert_device_info(&mut self, reg: u8) -> (i32, u8) {
-        let sid_nr = reg >> 5;
-        let dev_nr = if self.number_of_sids > 1 && sid_nr < self.sid_count as u8 {
-            self.device_mappings[sid_nr as usize]
-        } else {
-            self.device_mappings[0]
-        };
-        (dev_nr, reg & 0x1f)
-    }
-
-    #[inline]
     fn try_write_sync(&mut self, dev_nr: i32, reg: u8, data: u8) {
         if self.is_connected() {
             let physical_dev_nr = self.device_id[dev_nr as usize];
-            let (dev_nr, reg) = self.convert_device_info(reg);
-            let base_reg = self.device_base_reg[dev_nr as usize];
 
             loop {
-                let state = self.sid_device.as_mut().unwrap().write(physical_dev_nr as u8, reg | base_reg, data);
+                let state = self.sid_device.as_mut().unwrap().write(physical_dev_nr, reg, data);
 
                 if self.process_response(state) {
                     break;
@@ -703,10 +762,7 @@ impl HardsidUsbDevice {
     fn try_write_async(&mut self, dev_nr: i32, reg: u8, data: u8) -> u8 {
         if self.is_connected() {
             let physical_dev_nr = self.device_id[dev_nr as usize];
-            let (dev_nr, reg) = self.convert_device_info(reg);
-            let base_reg = self.device_base_reg[dev_nr as usize];
-
-            self.sid_device.as_mut().unwrap().write(physical_dev_nr as u8, reg | base_reg, data)
+            self.sid_device.as_mut().unwrap().write(physical_dev_nr, reg, data)
         } else {
             HSID_USB_STATE_OK
         }
@@ -717,10 +773,10 @@ impl HardsidUsbDevice {
         self.sid_write_fifo.clear();
 
         if self.is_connected() {
-            let dev_nr = self.device_id[dev_nr as usize];
+            let physical_dev_nr = self.device_id[dev_nr as usize];
 
             loop {
-                let state = self.sid_device.as_mut().unwrap().flush(dev_nr as u8);
+                let state = self.sid_device.as_mut().unwrap().flush(physical_dev_nr);
 
                 if self.process_response(state) {
                     break;
@@ -751,7 +807,7 @@ impl HardsidUsbDevice {
 
         if cycles > 0xffff {
             if cycles % 0xffff < MINIMUM_CYCLES {
-                self.push_write(DeviceCommand::Delay, 0, 0, MINIMUM_CYCLES);
+                self.push_write(DeviceCommand::Delay, 0, 0, MINIMUM_CYCLES as u16);
                 cycles -= MINIMUM_CYCLES
             }
 
@@ -762,9 +818,9 @@ impl HardsidUsbDevice {
         }
 
         if cycles >= HS_MIN_CYCLE_SID_WRITE {
-            self.push_write(DeviceCommand::Delay, 0, 0, cycles);
+            self.push_write(DeviceCommand::Delay, 0, 0, cycles as u16);
         } else {
-            self.push_write(DeviceCommand::Delay, 0, 0, HS_MIN_CYCLE_SID_WRITE);
+            self.push_write(DeviceCommand::Delay, 0, 0, HS_MIN_CYCLE_SID_WRITE as u16);
             self.cycles_to_compensate += HS_MIN_CYCLE_SID_WRITE - cycles;
         }
     }

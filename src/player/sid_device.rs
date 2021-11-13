@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2021 Wilfred Bos
+// Copyright (C) 2020 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #[allow(dead_code)]
@@ -57,11 +57,11 @@ pub trait SidDevice {
 
     fn silent_all_sids(&mut self, dev_nr: i32, write_volume: bool);
 
-    fn silent_sid(&mut self, dev_nr: i32, write_volume: bool);
+    fn silent_active_sids(&mut self, dev_nr: i32, write_volume: bool);
 
     fn reset_all_sids(&mut self, dev_nr: i32);
 
-    fn reset_sid(&mut self, dev_nr: i32);
+    fn reset_active_sids(&mut self, dev_nr: i32);
 
     fn reset_all_buffers(&mut self, dev_nr: i32);
 
@@ -69,11 +69,11 @@ pub trait SidDevice {
 
     fn disable_turbo_mode(&mut self, dev_nr: i32);
 
-    fn dummy_write(&mut self, dev_nr: i32, cycles_input: u32);
+    fn dummy_write(&mut self, dev_nr: i32, cycles: u32);
 
-    fn write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8);
+    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8);
 
-    fn try_write(&mut self, dev_nr: i32, cycles_input: u32, reg: u8, data: u8) -> DeviceResponse;
+    fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse;
 
     fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse;
 
