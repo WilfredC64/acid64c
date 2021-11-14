@@ -428,33 +428,32 @@ impl Player
     fn write_last_sid_writes(&mut self) {
         let number_of_sids = self.acid64_lib.get_number_of_sids(self.c64_instance);
 
-        for sid_number in 1..=number_of_sids {
-            self.write_voice_regs(1, sid_number);
-            self.write_voice_regs(2, sid_number);
-            self.write_voice_regs(3, sid_number);
+        for sid_nr in 0..number_of_sids {
+            let sid_base = (sid_nr * 0x20) as u8;
+            self.write_voice_regs(0, sid_base);
+            self.write_voice_regs(1, sid_base);
+            self.write_voice_regs(2, sid_base);
 
-            self.write_filter_and_volume_regs(sid_number);
+            self.write_filter_and_volume_regs(sid_base);
         }
     }
 
     #[inline]
-    fn write_voice_regs(&mut self, voice_number: i32, sid_number: i32) {
-        let reg_base: u8 = ((voice_number - 1) * 7) as u8;
-        let sid_base: u8 = ((sid_number - 1) * 3) as u8;
+    fn write_voice_regs(&mut self, voice_nr: u8, sid_base: u8) {
+        let voice_offset = voice_nr * 7;
+        let reg_base = sid_base + voice_offset;
 
-        self.write_last_sid_write(sid_base + reg_base + 0x03);
-        self.write_last_sid_write(sid_base + reg_base + 0x02);
-        self.write_last_sid_write(sid_base + reg_base + 0x01);
-        self.write_last_sid_write(sid_base + reg_base);
-        self.write_last_sid_write(sid_base + reg_base + 0x06);
-        self.write_last_sid_write(sid_base + reg_base + 0x05);
-        self.write_last_sid_write(sid_base + reg_base + 0x04);
+        self.write_last_sid_write(reg_base + 0x03);
+        self.write_last_sid_write(reg_base + 0x02);
+        self.write_last_sid_write(reg_base + 0x01);
+        self.write_last_sid_write(reg_base);
+        self.write_last_sid_write(reg_base + 0x06);
+        self.write_last_sid_write(reg_base + 0x05);
+        self.write_last_sid_write(reg_base + 0x04);
     }
 
     #[inline]
-    fn write_filter_and_volume_regs(&mut self, sid_number: i32) {
-        let sid_base: u8 = ((sid_number - 1) * 3) as u8;
-
+    fn write_filter_and_volume_regs(&mut self, sid_base: u8) {
         self.write_last_sid_write(sid_base + 0x15);
         self.write_last_sid_write(sid_base + 0x16);
         self.write_last_sid_write(sid_base + 0x17);
