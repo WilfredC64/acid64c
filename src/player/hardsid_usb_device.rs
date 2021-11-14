@@ -309,11 +309,11 @@ impl HardsidUsbDevice {
 
             if dev_count as i32 != self.device_count {
                 self.disconnect_with_error(ERROR_MSG_DEVICE_COUNT_CHANGED.to_string());
+            } else if dev_nr >= 0 && dev_nr < self.device_base_reg.len() as i32 {
+                let reg_base = self.device_base_reg[dev_nr as usize];
+                self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x1e, 0);
+                self.force_flush(dev_nr);
             }
-
-            let reg_base = self.device_base_reg[dev_nr as usize];
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x1e, 0);
-            self.force_flush(dev_nr);
         }
     }
 
