@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, thread, time};
 
-const HSID_BUSY_WAIT_MS: u64 = 5;
+const BUSY_WAIT_MILLIS: u64 = 1;
 const ERROR_MSG_DEVICE_FAILURE: &str = "Failure occurred during interaction with device.";
 const ERROR_MSG_INIT_DEVICE: &str = "Initializing HardSID USB device failed with error:";
 const ERROR_MSG_NO_HARDSID_FOUND: &str = "No HardSID USB device found.";
@@ -684,7 +684,7 @@ impl HardsidUsbDevice {
             match device_state {
                 HSID_USB_STATE_BUSY => {
                     self.sid_write_fifo.push_front(sid_write);
-                    thread::sleep(time::Duration::from_millis(HSID_BUSY_WAIT_MS));
+                    thread::yield_now();
                     return DeviceResponse::Busy
                 },
                 HSID_USB_STATE_ERROR => {
@@ -864,7 +864,7 @@ impl HardsidUsbDevice {
         }
 
         if !self.turbo_mode {
-            thread::sleep(time::Duration::from_millis(HSID_BUSY_WAIT_MS));
+            thread::sleep(time::Duration::from_millis(BUSY_WAIT_MILLIS));
         } else {
             thread::yield_now();
         }

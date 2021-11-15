@@ -29,8 +29,9 @@ const MIN_CYCLE_SID_WRITE: u32 = 8;
 
 const SID_MODEL_8580: i32 = 2;
 
-const PAUSE_SLEEP_MS: u64 = 10;
-const ABORT_DEVICE_DELAY: u64 = 20;
+const BUSY_WAIT_MILLIS: u64 = 1;
+const PAUSE_SLEEP_MILLIS: u64 = 10;
+const ABORT_DEVICE_DELAY_MILLIS: u64 = 20;
 
 pub const ABORT_NO: AbortType = 0;
 pub const ABORT_TO_QUIT: AbortType = 1;
@@ -177,7 +178,7 @@ impl Player
             self.process_player_commands();
 
             if self.paused {
-                thread::sleep(time::Duration::from_millis(PAUSE_SLEEP_MS));
+                thread::sleep(time::Duration::from_millis(PAUSE_SLEEP_MILLIS));
                 continue;
             }
 
@@ -186,6 +187,7 @@ impl Player
             }
 
             if device_state == DeviceResponse::Busy {
+                thread::sleep(time::Duration::from_millis(BUSY_WAIT_MILLIS));
                 device_state = self.sid_device.as_mut().unwrap().retry_write(self.device_number);
                 continue;
             }
@@ -222,7 +224,7 @@ impl Player
         self.abort_type.store(ABORTING, Ordering::SeqCst);
 
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        thread::sleep(time::Duration::from_millis(ABORT_DEVICE_DELAY));
+        thread::sleep(time::Duration::from_millis(ABORT_DEVICE_DELAY_MILLIS));
         self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number, true);
 
         self.abort_type.store(ABORTED, Ordering::SeqCst);

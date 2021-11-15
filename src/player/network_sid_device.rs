@@ -17,7 +17,7 @@ const MAX_SID_WRITES: usize = WRITE_BUFFER_SIZE - BUFFER_SINGLE_WRITE_SIZE;
 const WRITE_CYCLES_THRESHOLD: u32 = 63 * 312 / 2;
 const CLIENT_WAIT_CYCLES_THRESHOLD: u32 = 20000;
 const MIN_CYCLES_FOR_DELAY: u32 = 63 * 312 * 50;
-const MIN_WAIT_TIME_BUSY_MS: u64 = 5;
+const MIN_WAIT_TIME_BUSY_MILLIS: u64 = 3;
 const BUFFER_HEADER_SIZE: usize = 4;
 const DEFAULT_DEVICE_COUNT_INTERFACE_V1: i32 = 2;
 const SOCKET_CONNECTION_TIMEOUT: u64 = 1000;
@@ -558,12 +558,12 @@ impl NetworkSidDevice {
             match device_state {
                 CommandResponse::Ok => {
                     if cycles_sent_to_server > CLIENT_WAIT_CYCLES_THRESHOLD {
-                        thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MS));
+                        thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MILLIS));
                     }
                     DeviceResponse::Ok
                 },
                 CommandResponse::Busy => {
-                    thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MS));
+                    thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MILLIS));
                     DeviceResponse::Busy
                 },
                 CommandResponse::Error => DeviceResponse::Error,
@@ -656,7 +656,7 @@ impl NetworkSidDevice {
             self.set_command(command, dev_nr as u8, arguments);
 
             let cycles_sent_to_server = self.buffer_cycles;
-            let mut idle_time = MIN_WAIT_TIME_BUSY_MS;
+            let mut idle_time = MIN_WAIT_TIME_BUSY_MILLIS;
 
             loop {
                 let (device_state, result) = self.flush_buffer();
@@ -670,7 +670,7 @@ impl NetworkSidDevice {
                         if let Command::TryWrite = command {
                             thread::sleep(time::Duration::from_millis(idle_time));
                         } else {
-                            thread::sleep(time::Duration::from_millis(0));
+                            thread::yield_now();
                         }
                     }
                     idle_time = 1;
