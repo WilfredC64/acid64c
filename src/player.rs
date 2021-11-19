@@ -380,14 +380,13 @@ impl Player
         Ok(())
     }
 
-    pub fn load_file<S>(&mut self, filename: S) -> Result<(), String> where S: Into<String> {
-        let filename = filename.into();
-        let is_loaded = self.acid64_lib.load_file(self.c64_instance, &filename);
+    pub fn load_file(&mut self, filename: &str) -> Result<(), String> {
+        let is_loaded = self.acid64_lib.load_file(self.c64_instance, filename);
 
         if !is_loaded {
             Err(format!("File '{}' could not be loaded.", filename))
         } else {
-            self.filename = Some(filename);
+            self.filename = Some(filename.to_string());
             self.acid64_lib.skip_silence(self.c64_instance, true);
             self.acid64_lib.enable_volume_fix(self.c64_instance, true);
 

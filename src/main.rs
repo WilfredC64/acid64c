@@ -90,7 +90,7 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    player.load_file(filename)?;
+    player.load_file(&filename)?;
     if song_number != -1 {
         player.set_song_to_play(song_number)?;
     }
