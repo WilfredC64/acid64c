@@ -182,7 +182,8 @@ pub struct HardsidUsbDevice {
     use_native_device_clock: bool,
     clock_adjust: ClockAdjust,
     cycles_to_compensate: u32,
-    device_init_done: Vec<bool>
+    device_init_done: Vec<bool>,
+    prev_uplay_dev_nr: i32
 }
 
 #[allow(dead_code)]
@@ -206,7 +207,8 @@ impl HardsidUsbDevice {
             use_native_device_clock: true,
             clock_adjust: ClockAdjust::new(),
             cycles_to_compensate: 0,
-            device_init_done: vec![]
+            device_init_done: vec![],
+            prev_uplay_dev_nr: 0
         }
     }
 
@@ -220,7 +222,6 @@ impl HardsidUsbDevice {
         }
 
         let usb_device = hardsid_usb.unwrap();
-
         if !usb_device.init_sidplay_mode() {
             let unknown_device = "unknown".to_string();
             let error = usb_device.get_last_error().unwrap_or(unknown_device);
@@ -368,6 +369,11 @@ impl HardsidUsbDevice {
     #[inline]
     fn wait_for_uplay_activation(&mut self, dev_nr: i32) {
         if self.device_type[dev_nr as usize] == DEV_TYPE_HS_UPLAY {
+            if self.device_init_done[dev_nr as usize] && self.prev_uplay_dev_nr == dev_nr {
+                return;
+            }
+
+            self.prev_uplay_dev_nr = dev_nr;
             self.device_init_done[dev_nr as usize] = true;
 
             // trigger SID selection by performing a dummy write to new device number without flushing it
