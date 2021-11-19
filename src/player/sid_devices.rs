@@ -267,6 +267,10 @@ impl SidDevices {
     }
 
     pub fn is_connected(&mut self, dev_nr: i32) -> bool {
+        if self.sid_devices.is_empty() {
+            return false;
+        }
+
         if dev_nr == -1 {
             for i in 0..self.sid_devices.len() {
                 let connected = self.sid_devices[i].is_connected(0);

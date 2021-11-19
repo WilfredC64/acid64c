@@ -175,15 +175,15 @@ impl Player
         let mut device_state = DeviceResponse::Ok;
 
         while !self.should_quit() {
+            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
+                break;
+            }
+
             self.process_player_commands();
 
             if self.paused {
                 thread::sleep(time::Duration::from_millis(PAUSE_SLEEP_MILLIS));
                 continue;
-            }
-
-            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
-                break;
             }
 
             if device_state == DeviceResponse::Busy {
