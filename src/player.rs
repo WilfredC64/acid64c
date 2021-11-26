@@ -175,10 +175,6 @@ impl Player
         let mut device_state = DeviceResponse::Ok;
 
         while !self.should_quit() {
-            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
-                break;
-            }
-
             self.process_player_commands();
 
             if self.paused {
@@ -223,9 +219,11 @@ impl Player
 
         self.abort_type.store(ABORTING, Ordering::SeqCst);
 
-        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        thread::sleep(time::Duration::from_millis(ABORT_DEVICE_DELAY_MILLIS));
-        self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number, true);
+        if self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
+            self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+            thread::sleep(time::Duration::from_millis(ABORT_DEVICE_DELAY_MILLIS));
+            self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number, true);
+        }
 
         self.abort_type.store(ABORTED, Ordering::SeqCst);
     }
@@ -401,9 +399,9 @@ impl Player
     }
 
     #[inline]
-    fn should_quit(&self) -> bool {
+    fn should_quit(&mut self) -> bool {
         let abort_type = self.abort_type.load(Ordering::SeqCst);
-        abort_type == ABORT_TO_QUIT
+        abort_type == ABORT_TO_QUIT || !self.sid_device.as_mut().unwrap().is_connected(self.device_number)
     }
 
     #[inline]

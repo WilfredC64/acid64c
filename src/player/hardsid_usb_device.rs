@@ -18,6 +18,8 @@ const ERROR_MSG_DEVICE_COUNT_CHANGED: &str = "Number of devices is changed.";
 
 const HS_MIN_CYCLE_SID_WRITE: u32 = 4;
 
+const DUMMY_REG: u8 = 0x1e;
+
 pub struct HardsidUsbDeviceFacade {
     pub hs_device: HardsidUsbDevice
 }
@@ -311,8 +313,9 @@ impl HardsidUsbDevice {
             if dev_count as i32 != self.device_count {
                 self.disconnect_with_error(ERROR_MSG_DEVICE_COUNT_CHANGED.to_string());
             } else if dev_nr >= 0 && dev_nr < self.device_base_reg.len() as i32 {
-                let reg_base = self.device_base_reg[dev_nr as usize];
-                self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x1e, 0);
+                let base_reg = self.device_base_reg[dev_nr as usize];
+
+                self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + DUMMY_REG, 0);
                 self.force_flush(dev_nr);
             }
         }
@@ -431,118 +434,115 @@ impl HardsidUsbDevice {
         }
     }
 
-    fn silent_sid(&mut self, dev_nr: i32, reg_base: u8, write_volume: bool) {
+    fn silent_sid(&mut self, dev_nr: i32, base_reg: u8, write_volume: bool) {
         if self.number_of_sids > 0 && self.is_connected() {
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0f, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0e, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x01, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x08, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x07, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0f, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0e, 0);
 
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x05, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x06, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x04, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x05, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x06, 0);
 
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0c, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0d, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0b, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0c, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0d, 0);
 
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x13, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x14, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x12, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x13, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x14, 0);
 
             if write_volume {
-                self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x18, 0);
+                self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x18, 0);
             }
         }
     }
 
     pub fn reset_all_sids(&mut self, dev_nr: i32) {
         if self.is_connected() {
+            let base_reg = self.device_base_reg[dev_nr as usize];
+
             if self.device_type[dev_nr as usize] == DEV_TYPE_HS_4U {
                 let physical_dev_nr = self.device_id[dev_nr as usize];
                 for i in 0..self.device_id.len() {
                     if self.device_id[i] == physical_dev_nr {
                         let base_reg = self.device_base_reg[i];
-
-                        self.reset_sid(i as i32, base_reg, false);
+                        self.reset_sid(i as i32, base_reg);
                         if !self.is_connected() {
                             break;
                         }
                     }
                 }
-                self.dummy_write(dev_nr, 40000);
-                self.force_flush(dev_nr);
             } else {
-                let base_reg = self.device_base_reg[dev_nr as usize];
-                self.reset_sid(dev_nr, base_reg, true);
+                self.reset_sid(dev_nr, base_reg);
             }
+
+            self.write_direct(dev_nr, 40000, base_reg + DUMMY_REG, 0);
+            self.force_flush(dev_nr);
         }
     }
 
     pub fn reset_active_sids(&mut self, dev_nr: i32) {
         if self.is_connected() {
+            let base_reg = self.device_base_reg[dev_nr as usize];
+
             if self.device_type[dev_nr as usize] == DEV_TYPE_HS_4U {
                 for sid_nr in 0..self.number_of_sids as u8 {
                     let mapped_dev_nr = self.device_mappings[sid_nr as usize];
                     let base_reg = self.device_base_reg[mapped_dev_nr as usize];
 
-                    self.reset_sid(dev_nr, base_reg, false);
+                    self.reset_sid(dev_nr, base_reg);
                     if !self.is_connected() {
                         break;
                     }
                 }
-
-                self.dummy_write(dev_nr, 40000);
-                self.force_flush(dev_nr);
             } else {
-                let base_reg = self.device_base_reg[dev_nr as usize];
-                self.reset_sid(dev_nr, base_reg, true);
+                self.reset_sid(dev_nr, base_reg);
             }
+
+            self.write_direct(dev_nr, 40000, base_reg + DUMMY_REG, 0);
+            self.force_flush(dev_nr);
         }
     }
 
-    fn reset_sid(&mut self, dev_nr: i32, reg_base: u8, force_wait_and_flush: bool) {
+    fn reset_sid(&mut self, dev_nr: i32, base_reg: u8) {
         if self.number_of_sids > 0 && self.is_connected() {
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x01, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x07, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x08, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0e, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0f, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x01, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x07, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x08, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0e, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0f, 0);
 
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x04, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x0b, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg_base + 0x12, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x04, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0b, 0);
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x12, 0);
 
-            self.reset_sid_register(dev_nr, reg_base + 0x02);
-            self.reset_sid_register(dev_nr, reg_base + 0x03);
-            self.reset_sid_register(dev_nr, reg_base + 0x04);
-            self.reset_sid_register(dev_nr, reg_base + 0x05);
-            self.reset_sid_register(dev_nr, reg_base + 0x06);
+            self.reset_sid_register(dev_nr, base_reg + 0x02);
+            self.reset_sid_register(dev_nr, base_reg + 0x03);
+            self.reset_sid_register(dev_nr, base_reg + 0x04);
+            self.reset_sid_register(dev_nr, base_reg + 0x05);
+            self.reset_sid_register(dev_nr, base_reg + 0x06);
 
-            self.reset_sid_register(dev_nr, reg_base + 0x09);
-            self.reset_sid_register(dev_nr, reg_base + 0x0a);
-            self.reset_sid_register(dev_nr, reg_base + 0x0b);
-            self.reset_sid_register(dev_nr, reg_base + 0x0c);
-            self.reset_sid_register(dev_nr, reg_base + 0x0d);
+            self.reset_sid_register(dev_nr, base_reg + 0x09);
+            self.reset_sid_register(dev_nr, base_reg + 0x0a);
+            self.reset_sid_register(dev_nr, base_reg + 0x0b);
+            self.reset_sid_register(dev_nr, base_reg + 0x0c);
+            self.reset_sid_register(dev_nr, base_reg + 0x0d);
 
-            self.reset_sid_register(dev_nr, reg_base + 0x10);
-            self.reset_sid_register(dev_nr, reg_base + 0x11);
-            self.reset_sid_register(dev_nr, reg_base + 0x12);
-            self.reset_sid_register(dev_nr, reg_base + 0x13);
-            self.reset_sid_register(dev_nr, reg_base + 0x14);
+            self.reset_sid_register(dev_nr, base_reg + 0x10);
+            self.reset_sid_register(dev_nr, base_reg + 0x11);
+            self.reset_sid_register(dev_nr, base_reg + 0x12);
+            self.reset_sid_register(dev_nr, base_reg + 0x13);
+            self.reset_sid_register(dev_nr, base_reg + 0x14);
 
-            self.reset_sid_register(dev_nr, reg_base + 0x15);
-            self.reset_sid_register(dev_nr, reg_base + 0x16);
-            self.reset_sid_register(dev_nr, reg_base + 0x17);
-            self.reset_sid_register(dev_nr, reg_base + 0x19);
-
-            if force_wait_and_flush {
-                self.dummy_write(dev_nr, 40000);
-                self.force_flush(dev_nr);
-            }
+            self.reset_sid_register(dev_nr, base_reg + 0x15);
+            self.reset_sid_register(dev_nr, base_reg + 0x16);
+            self.reset_sid_register(dev_nr, base_reg + 0x17);
+            self.reset_sid_register(dev_nr, base_reg + 0x19);
         }
     }
 
@@ -550,7 +550,8 @@ impl HardsidUsbDevice {
     fn reset_sid_register(&mut self, dev_nr: i32, reg: u8) {
         self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0xff);
         self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x08);
-        self.dummy_write(dev_nr, 50);
+        let base_reg = reg & 0xe0;
+        self.write_direct(dev_nr, 50, base_reg + DUMMY_REG, 0);
         self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x00);
     }
 
@@ -571,8 +572,8 @@ impl HardsidUsbDevice {
 
     pub fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
         if self.is_connected() {
-            let reg_base = self.device_base_reg[dev_nr as usize];
-            self.write(dev_nr, cycles, reg_base + 0x1e, 0);
+            let base_reg = self.device_base_reg[dev_nr as usize];
+            self.write(dev_nr, cycles, base_reg + DUMMY_REG, 0);
         }
     }
 
@@ -616,7 +617,7 @@ impl HardsidUsbDevice {
     fn filter_reg_for_unsupported_writes(&mut self, dev_nr: i32, reg: u8) -> u8 {
         if self.number_of_sids > 1 && !self.are_multiple_sid_chips_supported(dev_nr) && reg >= 0x20 {
             // ignore second SID chip for devices that don't support accessing multiple SID chip simultaneously
-            0x1e
+            DUMMY_REG
         } else {
             reg
         }
@@ -669,7 +670,7 @@ impl HardsidUsbDevice {
     }
 
     pub fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
-        if self.sid_write_fifo.is_empty() {
+        if self.is_connected() && self.sid_write_fifo.is_empty() {
             let reg = self.map_device_to_reg(dev_nr, reg);
             self.create_delay(cycles);
             self.create_write(reg, data);
@@ -716,11 +717,11 @@ impl HardsidUsbDevice {
 
         if reg_offset < 0x10 {
             let voice_nr = reg_offset / 7;
-            let reg_base = reg & 0xe0;
+            let base_reg = reg & 0xe0;
             let reg_offset = reg_offset % 7;
 
             match reg_offset {
-                0x00 | 0x01 => self.adjust_frequency_for_voice(voice_nr, reg_base, reg_offset, data),
+                0x00 | 0x01 => self.adjust_frequency_for_voice(voice_nr, base_reg, reg_offset, data),
                 _ => self.push_write(DeviceCommand::Write, reg, data, 0)
             }
         } else {
@@ -729,9 +730,9 @@ impl HardsidUsbDevice {
     }
 
     #[inline]
-    fn adjust_frequency_for_voice(&mut self, voice_nr: u8, reg_base: u8, reg: u8, data: u8) {
+    fn adjust_frequency_for_voice(&mut self, voice_nr: u8, base_reg: u8, reg: u8, data: u8) {
         if reg <= 1 {
-            let voice_index = voice_nr + (reg_base >> 5) * 3;
+            let voice_index = voice_nr + (base_reg >> 5) * 3;
 
             self.clock_adjust.update_frequency(voice_index, reg, data);
             let last_freq = self.clock_adjust.get_last_scaled_freq(voice_index);
@@ -742,11 +743,11 @@ impl HardsidUsbDevice {
             let update_hi_freq = last_freq & 0xff00 != scaled_freq & 0xff00;
 
             if update_hi_freq {
-                self.push_write(DeviceCommand::Write, 1 + voice_base + reg_base, (scaled_freq >> 8) as u8, 0);
+                self.push_write(DeviceCommand::Write, 1 + voice_base + base_reg, (scaled_freq >> 8) as u8, 0);
                 self.create_delay(HS_MIN_CYCLE_SID_WRITE);
                 self.cycles_to_compensate += HS_MIN_CYCLE_SID_WRITE;
             }
-            self.push_write(DeviceCommand::Write, voice_base + reg_base, (scaled_freq & 0xff) as u8, 0);
+            self.push_write(DeviceCommand::Write, voice_base + base_reg, (scaled_freq & 0xff) as u8, 0);
         }
     }
 
