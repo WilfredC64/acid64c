@@ -21,6 +21,7 @@ const MIN_WAIT_TIME_BUSY_MILLIS: u64 = 3;
 const BUFFER_HEADER_SIZE: usize = 4;
 const DEFAULT_DEVICE_COUNT_INTERFACE_V1: i32 = 2;
 const SOCKET_CONNECTION_TIMEOUT: u64 = 1000;
+const DUMMY_REG: u8 = 0x1e;
 
 enum CommandResponse {
     Ok = 0,
@@ -506,7 +507,7 @@ impl NetworkSidDevice {
     }
 
     pub fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
-        self.write(dev_nr, cycles, 0x1e, 0);
+        self.write(dev_nr, cycles, DUMMY_REG, 0);
     }
 
     pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
@@ -630,7 +631,7 @@ impl NetworkSidDevice {
     fn add_to_buffer(&mut self, reg: u8, data: u8, cycles: u32) {
         let sid_reg = if !self.are_multiple_sid_chips_supported() && reg >= 0x20 && self.number_of_sids > 1 {
             // version 1 doesn't support stereo mixing, so ignore second SID chip
-            0x1e
+            DUMMY_REG
         } else {
             reg
         };
