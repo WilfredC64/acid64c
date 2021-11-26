@@ -142,7 +142,6 @@ impl ConsolePlayer {
     fn send_command(&mut self, command: PlayerCommand) {
         self.abort_type.store(ABORT_FOR_COMMAND, Ordering::SeqCst);
         let _ = self.player_cmd_sender.send(command);
-        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
     }
 
     fn convert_song_length(song_length: i32) -> String {
