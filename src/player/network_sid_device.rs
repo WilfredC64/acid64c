@@ -7,7 +7,7 @@ use std::net::{TcpStream, Shutdown};
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
 
-use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
+use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 
 const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
@@ -62,6 +62,8 @@ pub struct NetworkSidDeviceFacade {
 }
 
 impl SidDevice for NetworkSidDeviceFacade {
+    fn get_device_id(&mut self, _dev_nr: i32) -> DeviceId { DeviceId::NetworkSidDevice }
+
     fn disconnect(&mut self, _dev_nr: i32) {
         self.ns_device.disconnect();
     }
@@ -388,7 +390,6 @@ impl NetworkSidDevice {
     }
 
     fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        let dev_nr = self.convert_device_number(dev_nr);
         self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x00, 0);
         self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x01, 0);
         self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x07, 0);
@@ -418,12 +419,11 @@ impl NetworkSidDevice {
         let dev_nr = self.convert_device_number(dev_nr);
         self.try_flush_buffer(Command::TryReset, dev_nr, Some(&[default_volume]));
 
-        self.unmute_all_voices(0);
+        self.unmute_all_voices(dev_nr);
     }
 
     #[inline]
     fn unmute_all_voices(&mut self, dev_nr: i32) {
-        let dev_nr = self.convert_device_number(dev_nr);
         self.try_flush_buffer(Command::Mute, dev_nr, Some(&[0, 0]));
         self.try_flush_buffer(Command::Mute, dev_nr, Some(&[1, 0]));
         self.try_flush_buffer(Command::Mute, dev_nr, Some(&[2, 0]));
@@ -445,8 +445,6 @@ impl NetworkSidDevice {
 
     fn reset_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
-            let dev_nr = self.convert_device_number(dev_nr);
-
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x00, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x01, 0);
             self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x07, 0);
@@ -533,6 +531,7 @@ impl NetworkSidDevice {
 
     pub fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
         if self.buffer_index > BUFFER_HEADER_SIZE {
+            let dev_nr = self.convert_device_number(dev_nr);
             self.try_write_buffer(Command::TryWrite, dev_nr, None)
         } else {
             DeviceResponse::Ok

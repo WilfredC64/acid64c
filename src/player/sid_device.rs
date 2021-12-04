@@ -24,7 +24,16 @@ pub enum DeviceResponse {
     Error = 2
 }
 
+#[allow(dead_code)]
+#[derive(Copy, Clone, PartialEq)]
+pub enum DeviceId {
+    HardsidUsb = 0,
+    NetworkSidDevice = 1
+}
+
 pub trait SidDevice {
+    fn get_device_id(&mut self, dev_nr: i32) -> DeviceId;
+
     fn disconnect(&mut self, dev_nr: i32);
 
     fn is_connected(&mut self, dev_nr: i32) -> bool;

@@ -3,7 +3,7 @@
 
 use super::clock_adjust::ClockAdjust;
 use super::hardsid_usb::{HardSidUsb, HSID_USB_STATE_OK, HSID_USB_STATE_ERROR, HSID_USB_STATE_BUSY, DEV_TYPE_HS_4U, DEV_TYPE_HS_UPLAY, DEV_TYPE_HS_UNO};
-use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
+use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 
 use std::collections::VecDeque;
@@ -25,6 +25,8 @@ pub struct HardsidUsbDeviceFacade {
 }
 
 impl SidDevice for HardsidUsbDeviceFacade {
+    fn get_device_id(&mut self, _dev_nr: i32) -> DeviceId { DeviceId::HardsidUsb }
+
     fn disconnect(&mut self, _dev_nr: i32) {
         self.hs_device.disconnect();
     }
@@ -224,6 +226,7 @@ impl HardsidUsbDevice {
         }
 
         let usb_device = hardsid_usb.unwrap();
+
         if !usb_device.init_sidplay_mode() {
             let unknown_device = "unknown".to_string();
             let error = usb_device.get_last_error().unwrap_or(unknown_device);

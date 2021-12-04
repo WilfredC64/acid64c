@@ -1,7 +1,7 @@
 // Copyright (C) 2020 - 2021 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
+use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
 
 #[cfg(target_os = "windows")]
 use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
@@ -16,6 +16,8 @@ pub struct SidDevicesFacade {
 }
 
 impl SidDevice for SidDevicesFacade {
+    fn get_device_id(&mut self, dev_nr: i32) -> DeviceId { self.devices.get_device_id(dev_nr) }
+
     fn disconnect(&mut self, dev_nr: i32) {
         self.devices.disconnect(dev_nr);
     }
@@ -231,6 +233,12 @@ impl SidDevices {
     #[inline]
     fn map_sid_offset(&mut self, dev_nr: i32) -> u8 {
         self.device_offset[dev_nr as usize]
+    }
+
+    pub fn get_device_id(&mut self, dev_nr: i32) -> DeviceId {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].get_device_id(mapped_sid_nr as i32)
     }
 
     pub fn disconnect(&mut self, dev_nr: i32) {
