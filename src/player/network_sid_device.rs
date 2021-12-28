@@ -260,7 +260,7 @@ impl NetworkSidDevice {
         self.reset_buffer();
     }
 
-    pub fn disconnect_with_error(&mut self, error_message: String) {
+    fn disconnect_with_error(&mut self, error_message: String) {
         self.last_error = Some(error_message);
         self.disconnect();
     }
