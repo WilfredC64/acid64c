@@ -576,7 +576,10 @@ impl NetworkSidDevice {
 
     pub fn force_flush(&mut self, dev_nr: i32) {
         let dev_nr = self.convert_device_number(dev_nr);
-        self.try_flush_buffer(Command::TryWrite, dev_nr, None);
+
+        if self.buffer_index > BUFFER_HEADER_SIZE {
+            self.try_flush_buffer(Command::TryWrite, dev_nr, None);
+        }
     }
 
     pub fn get_device_clock(&self) -> SidClock {
