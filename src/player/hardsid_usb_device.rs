@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2021 Wilfred Bos
+// Copyright (C) 2020 - 2022 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use super::clock_adjust::ClockAdjust;
@@ -230,7 +230,7 @@ impl HardsidUsbDevice {
         if !usb_device.init_sidplay_mode() {
             let unknown_device = "unknown".to_string();
             let error = usb_device.get_last_error().unwrap_or(unknown_device);
-            Err(format!("{} {}.", ERROR_MSG_INIT_DEVICE.to_string(), error))
+            Err(format!("{} {}.", ERROR_MSG_INIT_DEVICE, error))
         } else {
             let dev_count = usb_device.get_dev_count();
             self.device_count = dev_count as i32;

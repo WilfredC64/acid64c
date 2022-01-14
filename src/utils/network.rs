@@ -1,6 +1,7 @@
-// Copyright (C) 2019 - 2021 Wilfred Bos
+// Copyright (C) 2019 - 2022 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
+#![allow(dead_code)]
 use get_if_addrs::IfAddr;
 use std::net::{Ipv4Addr, ToSocketAddrs};
 use std::str::FromStr;
@@ -32,8 +33,8 @@ fn resolve_local_ip(host_name: &str) -> Option<String> {
         .map(|iter| iter.filter(|socket_address| socket_address.is_ipv4())
             .map(|socket_address| socket_address.ip().to_string()).collect::<Vec<_>>());
 
-    if ip_addresses.is_ok() {
-        for ip_address in ip_addresses.unwrap() {
+    if let Ok(ip_addresses) = ip_addresses {
+        for ip_address in ip_addresses {
             if is_local(&ip_address) {
                 return Some(ip_address);
             }
