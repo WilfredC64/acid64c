@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2021 Wilfred Bos
+// Copyright (C) 2019 - 2022 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use std::cmp::{min, max};
@@ -16,8 +16,8 @@ const BUFFER_SINGLE_WRITE_SIZE: usize = 4;  // cycles 2 bytes, register 1 byte a
 const MAX_SID_WRITES: usize = WRITE_BUFFER_SIZE - BUFFER_SINGLE_WRITE_SIZE;
 const WRITE_CYCLES_THRESHOLD: u32 = 63 * 312 / 2;
 const CLIENT_WAIT_CYCLES_THRESHOLD: u32 = 20000;
-const MIN_CYCLES_FOR_DELAY: u32 = 63 * 312 * 50;
 const MIN_WAIT_TIME_BUSY_MILLIS: u64 = 3;
+const MIN_CYCLES_AFTER_DELAY: u16 = 0x100;
 const BUFFER_HEADER_SIZE: usize = 4;
 const DEFAULT_DEVICE_COUNT_INTERFACE_V1: i32 = 2;
 const SOCKET_CONNECTION_TIMEOUT: u64 = 1000;
@@ -509,7 +509,7 @@ impl NetworkSidDevice {
     }
 
     pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
-        let cycles = self.do_delay(dev_nr, cycles);
+        let cycles = self.delay(dev_nr, cycles);
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
@@ -518,11 +518,10 @@ impl NetworkSidDevice {
     }
 
     pub fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
-        let cycles = self.do_delay(dev_nr, cycles);
+        let cycles = self.delay(dev_nr, cycles);
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
-            let dev_nr = self.convert_device_number(dev_nr);
             self.try_write_buffer(Command::TryWrite, dev_nr, None)
         } else {
             DeviceResponse::Ok
@@ -531,7 +530,6 @@ impl NetworkSidDevice {
 
     pub fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {
         if self.buffer_index > BUFFER_HEADER_SIZE {
-            let dev_nr = self.convert_device_number(dev_nr);
             self.try_write_buffer(Command::TryWrite, dev_nr, None)
         } else {
             DeviceResponse::Ok
@@ -539,17 +537,17 @@ impl NetworkSidDevice {
     }
 
     #[inline]
-    fn do_delay(&mut self, dev_nr: i32, cycles: u32) -> u32 {
+    fn delay(&mut self, dev_nr: i32, cycles: u32) -> u16 {
         if cycles > 0xffff {
-            let dev_nr = self.convert_device_number(dev_nr);
-            self.delay(dev_nr, cycles, 0x100)
+            self.split_delay(dev_nr, cycles, MIN_CYCLES_AFTER_DELAY)
         } else {
-            cycles
+            cycles as u16
         }
     }
 
     fn try_write_buffer(&mut self, command: Command, dev_nr: i32, arguments: Option<&[u8]>) -> DeviceResponse {
         if self.is_connected() {
+            let dev_nr = self.convert_device_number(dev_nr);
             self.set_command(command, dev_nr as u8, arguments);
 
             let cycles_sent_to_server = self.buffer_cycles;
@@ -594,21 +592,22 @@ impl NetworkSidDevice {
     }
 
     #[inline]
-    fn delay(&mut self, dev_nr: i32, cycles: u32, minimum_cycles_to_remain: u32) -> u32 {
+    fn split_delay(&mut self, dev_nr: i32, cycles: u32, minimum_cycles_to_remain: u16) -> u16 {
+        let dev_nr = self.convert_device_number(dev_nr);
         self.flush_pending_writes(dev_nr);
 
-        let mut cycles = cycles - minimum_cycles_to_remain;
-        while cycles > 0xffff {
+        let mut cycles = cycles - minimum_cycles_to_remain as u32;
+        while cycles >= 0xffff {
             self.flush_delay(dev_nr, 0xffff);
             cycles -= 0xffff;
         }
 
-        if cycles > MIN_CYCLES_FOR_DELAY {
+        if cycles + minimum_cycles_to_remain as u32 > 0xffff {
             self.flush_delay(dev_nr, cycles as u16);
             cycles = 0;
         }
 
-        minimum_cycles_to_remain + cycles
+        minimum_cycles_to_remain + cycles as u16
     }
 
     #[inline]
@@ -629,7 +628,7 @@ impl NetworkSidDevice {
     }
 
     #[inline]
-    fn add_to_buffer(&mut self, reg: u8, data: u8, cycles: u32) {
+    fn add_to_buffer(&mut self, reg: u8, data: u8, cycles: u16) {
         let sid_reg = if !self.are_multiple_sid_chips_supported() && reg >= 0x20 && self.number_of_sids > 1 {
             // version 1 doesn't support stereo mixing, so ignore second SID chip
             DUMMY_REG
@@ -650,7 +649,7 @@ impl NetworkSidDevice {
         self.write_buffer[self.buffer_index + 2] = (sid_chip_number << 5) as u8 + (sid_reg & 0x1f);
         self.write_buffer[self.buffer_index + 3] = data;
         self.buffer_index += 4;
-        self.buffer_cycles += cycles & 0xffff;
+        self.buffer_cycles += cycles as u32;
     }
 
     fn try_flush_buffer(&mut self, command: Command, dev_nr: i32, arguments: Option<&[u8]>) -> Vec<u8> {
