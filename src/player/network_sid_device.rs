@@ -325,13 +325,10 @@ impl NetworkSidDevice {
     pub fn set_sid_position(&mut self, sid_position: i8) {
         if self.interface_version >= 2 {
             let mut panning: i8 = if self.number_of_sids > 1 {
-                sid_position
+                max(min(sid_position, 100), -100)
             } else {
                 0
             };
-
-            panning = min(panning, 100);
-            panning = max(panning, -100);
 
             for sid_number in 0..self.number_of_sids {
                 self.try_flush_buffer(Command::SetSidPosition, sid_number, Some(&[panning as u8]));
