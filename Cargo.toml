@@ -12,7 +12,7 @@ build = "build.rs"
 [dependencies]
 libloading = "0.7"
 encoding = "0.2"
-crossterm = "0.22"
+crossterm = "0.23"
 timer = "0.2"
 chrono = "0.4"
 get_if_addrs = "0.5"
