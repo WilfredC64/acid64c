@@ -8,7 +8,11 @@ use std::str::FromStr;
 
 pub fn is_local_ip_address(host_name: &str) -> bool {
     if let Some(local_ip_address) = resolve_local_ip(host_name) {
-        is_ip_in_local_network(&local_ip_address)
+        if !is_link_local(host_name) {
+            is_ip_in_local_network(&local_ip_address)
+        } else {
+            true
+        }
     } else {
         false
     }
@@ -45,7 +49,15 @@ fn resolve_local_ip(host_name: &str) -> Option<String> {
 
 fn is_local(host_name: &str) -> bool {
     if let Ok(localhost) = Ipv4Addr::from_str(host_name) {
-        localhost.is_loopback() || localhost.is_private()
+        localhost.is_loopback() || localhost.is_private() || localhost.is_link_local()
+    } else {
+        false
+    }
+}
+
+fn is_link_local(host_name: &str) -> bool {
+    if let Ok(localhost) = Ipv4Addr::from_str(host_name) {
+        localhost.is_link_local()
     } else {
         false
     }
