@@ -21,3 +21,4 @@ get_if_addrs = "0.5"
 lto = true
 panic = "abort"
 codegen-units = 1
+strip = true
