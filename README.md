@@ -101,9 +101,9 @@ When you run the Zadig tool, turn on your device and see if one of the following
 - HardSID UPlay
 - HardSID Uno
 
-If they are not in the dropdown list, check if your device is connected and turned on.
+If they are not in the dropdown list, check if your device is connected and turned it on.
 You can also go to the Options menu and select "List All Devices" and see if the HardSID
-device is in the list. If it is, the device still has a driver assigned and you need to uninstall it or
+device is in the list. If it is, the device still has a driver assigned and you need to uninstall it, or
 you forgot to reboot. Just follow the procedure above again.
 
 Now find and select the HardSID device from the dropdown. Notice the USB ID is:
