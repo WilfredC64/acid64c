@@ -76,14 +76,14 @@ converted from the
 
 ACID64 supports HardSID USB devices like the HardSID 4U, HardSID UPlay and HardSID Uno.
 For this you need to have a driver installed.
-ACID64 supports the official HardSID Windows drivers and the WinUSB drivers.
+ACID64 supports the official HardSID Windows driver and the WinUSB driver.
 
 ### Driver installation
 
 On Windows, it's recommended to install the WinUSB driver,
 since it is digitally signed and can be used without any tricks.
 
-To install the WinUSB drivers, just download the Zadig tool via:
+To install the WinUSB driver, just download the Zadig tool via:
 
 [https://zadig.akeo.ie/](https://zadig.akeo.ie/)
 
