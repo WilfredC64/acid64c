@@ -1,6 +1,6 @@
 [package]
 name = "acid64c"
-version = "1.0.6"
+version = "1.0.7"
 authors = ["Wilfred Bos"]
 description = "ACID64 Console SID player."
 readme = "README.md"
@@ -10,15 +10,22 @@ keywords = ["ACID64 console player", "sidplayer", "c64 music player", "SID 6581"
 build = "build.rs"
 
 [dependencies]
-libloading = "0.7"
-encoding = "0.2"
-crossterm = "0.23"
-timer = "0.2"
 chrono = "0.4"
+crossterm = "0.23"
+encoding = "0.2"
 get_if_addrs = "0.5"
+libloading = "0.7"
+timer = "0.2"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[package.metadata.winres]
+ProductName = "ACID64 Console Player"
+LegalCopyright = "Copyright © 2003 - 2022 Wilfred Bos"
 
 [profile.release]
+codegen-units = 1
 lto = true
 panic = "abort"
-codegen-units = 1
 strip = true
