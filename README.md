@@ -80,8 +80,8 @@ ACID64 supports the official HardSID Windows drivers and the WinUSB drivers.
 
 ### Driver installation
 
-On Windows, it's recommended to install the WinUSB drivers,
-since they are digitally signed and can be used without any tricks.
+On Windows, it's recommended to install the WinUSB driver,
+since it is digitally signed and can be used without any tricks.
 
 To install the WinUSB drivers, just download the Zadig tool via:
 
