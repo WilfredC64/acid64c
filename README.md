@@ -8,7 +8,7 @@ The player requires a network SID device to be installed such as
 The player makes use of the acid64pro.dll win32 library. Since this dll is a 32-bit
 library, the code of the player can only run successfully when compiled for Windows 32-bit.
 
-### Building
+## Building
 
 In order to build the project, make sure you have installed one of the following ABIs
 via rustup:
@@ -26,7 +26,7 @@ For building:
 cargo build --release
 ```
 
-### Usage
+## Usage
 ```
 acid64c <options> <file_name>
 
@@ -39,7 +39,7 @@ acid64c <options> <file_name>
   -s{song_number}: set song number (1..n), default is start song in SID file
 ```
 
-### Run
+## Run
 
 Example of how to run the application playing the music from Commando:
 ```
@@ -53,7 +53,7 @@ or directly from the target folder:
 ```
 Make sure that the acid64pro.dll is in the same folder as the acid64c.exe executable.
 
-### Keys
+## Keys
 During playback you can use the following keys:
 ```
 1-9, 0: play sub tune #1-#9, #10
@@ -63,7 +63,7 @@ p: pause/resume playback
 Escape (ESC) key: exit program
 ```
 
-### Documentation
+## Documentation
 For documentation about the acid64pro.dll library, see the [readme.txt](/library/readme.txt) file
 in the library folder.
 
@@ -72,5 +72,50 @@ For documentation about the network SID device, see the
 converted from the
 [JSidplay2](https://sourceforge.net/p/jsidplay2/code/HEAD/tree/trunk/jsidplay2/src/main/asciidoc/netsiddev.adoc) project.
 
-### Licensing
+## HardSID USB support
+
+ACID64 supports HardSID USB devices like the HardSID 4U, HardSID UPlay and HardSID Uno.
+For this you need to have a driver installed.
+ACID64 supports the official HardSID Windows drivers and the WinUSB drivers.
+
+### Driver installation
+
+On Windows, it's recommended to install the WinUSB drivers,
+since they are digitally signed and can be used without any tricks.
+
+To install the WinUSB drivers, just download the Zadig tool via:
+
+[https://zadig.akeo.ie/](https://zadig.akeo.ie/)
+
+
+This is an open-source tool which will install a generic signed driver that can control any USB device.
+
+Before installing the driver via the Zadig tool, make sure to uninstall the official HardSID driver
+if you already have it installed. Connect and turn on your HardSID USB device and go to
+Computer Management to uninstall the driver.
+Also make sure you select the "Delete the driver software for this device" during uninstall and reboot when done.
+
+When you run the Zadig tool, turn on your device and see if one of the following devices are in the list:
+
+- HardSID 4U
+- HardSID UPlay
+- HardSID Uno
+
+If they are not in the dropdown list, check if your device is connected and turned on.
+You can also go to the Options menu and select "List All Devices" and see if the HardSID
+device is in the list. If it is, the device still has a driver assigned and you need to uninstall it or
+you forgot to reboot. Just follow the procedure above again.
+
+Now find and select the HardSID device from the dropdown. Notice the USB ID is:
+
+- "6581 8580" for the HardSID 4U
+- "6581 8581" for the HardSID Uplay
+- "6581 8582" for the HardSID Uno
+
+Make sure the WinUSB driver is selected and press the "Install Driver" button.
+It will take a while before the installation completes.
+
+You have to install the driver for each type of USB HardSID Device that you plugin.
+
+## Licensing
 The source code is licensed under the GPL v3 license. License is available [here](/LICENSE).
