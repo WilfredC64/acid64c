@@ -1,7 +1,7 @@
 
-                    ACID 64 Player Library v2.1.1
+                    ACID 64 Player Library v2.1.2
 
-                 Copyright (c) 2008-2021 Wilfred Bos
+                 Copyright (c) 2008-2022 Wilfred Bos
                      Programmed by: Wilfred Bos
                        https://www.acid64.com
                 Concept by: Sándor Téli & Wilfred Bos
@@ -83,7 +83,7 @@ The library supports the following methods (in Delphi code):
 getVersion
 ==========
 The 'getVersion' method returns the version number of the library in hex.
-E.g. 0x211 means version 2.1.1
+E.g. 0x212 means version 2.1.2
 
 
 createC64Instance
