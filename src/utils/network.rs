@@ -2,7 +2,7 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #![allow(dead_code)]
-use get_if_addrs::IfAddr;
+use if_addrs::IfAddr;
 use std::net::{Ipv4Addr, ToSocketAddrs};
 use std::str::FromStr;
 
@@ -19,7 +19,7 @@ pub fn is_local_ip_address(host_name: &str) -> bool {
 }
 
 fn is_ip_in_local_network(local_ip_address: &str) -> bool {
-    for if_addr in get_if_addrs::get_if_addrs().unwrap() {
+    for if_addr in if_addrs::get_if_addrs().unwrap() {
         if let IfAddr::V4(ref ip_addr) = if_addr.addr {
             let ip_addr_netmask = ip_addr.netmask.to_string();
             let masked_local_ip = mask_ip_address(&ip_addr.ip.to_string(), &ip_addr_netmask);
