@@ -351,6 +351,10 @@ impl HardsidUsbDevice {
 
     pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
         if self.is_connected() {
+            if sid_socket >= self.sid_count {
+                return;
+            }
+
             let mut new_dev_nr = dev_nr + sid_socket;
             let physical_dev_nr = self.device_id[dev_nr as usize];
 
