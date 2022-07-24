@@ -1,10 +1,10 @@
 
-                    ACID 64 Player Library v2.1.2
+                    ACID 64 Player Library v2.1.4
 
                  Copyright (c) 2008-2022 Wilfred Bos
                      Programmed by: Wilfred Bos
                        https://www.acid64.com
-                Concept by: SÃ¡ndor TÃ©li & Wilfred Bos
+                Concept by: Sándor Téli & Wilfred Bos
 
 
 USE THIS LIBRARY AT YOUR OWN RISK. THIS LIBRARY COMES WITHOUT WARRANTY
@@ -83,7 +83,7 @@ The library supports the following methods (in Delphi code):
 getVersion
 ==========
 The 'getVersion' method returns the version number of the library in hex.
-E.g. 0x212 means version 2.1.2
+E.g. 0x214 means version 2.1.4
 
 
 createC64Instance
@@ -498,6 +498,9 @@ Possible values:
 
 This method should be called before the 'run' method or after the
 'setSongToPlay' method.
+
+Note that overwriting the C64 clock will not affect the $02A6 setting. The
+value of $02A6 is based on the C64 clock specified in the SID header.
 
 
 clearMemUsageOnFirstSidAccess
