@@ -163,7 +163,7 @@ impl SidDevices {
 
     pub fn connect(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
         #[cfg(target_os = "windows")]
-            let hs_connect_result = self.try_connect_hardsid_device();
+        let hs_connect_result = self.try_connect_hardsid_device();
 
         let ns_connect_result = self.try_connect_network_device(ip_address, port);
 
@@ -171,7 +171,7 @@ impl SidDevices {
             let mut errors = vec![ns_connect_result.err().unwrap_or_default()];
 
             #[cfg(target_os = "windows")]
-                errors.push(hs_connect_result.err().unwrap_or_default());
+            errors.push(hs_connect_result.err().unwrap_or_default());
 
             Err(errors.join(" | "))
         } else {

@@ -2,7 +2,7 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum SidClock {
     Pal = 0,
     Ntsc = 1,
@@ -17,7 +17,7 @@ pub enum SamplingMethod {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum DeviceResponse {
     Ok = 0,
     Busy = 1,
@@ -25,7 +25,7 @@ pub enum DeviceResponse {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum DeviceId {
     HardsidUsb = 0,
     NetworkSidDevice = 1

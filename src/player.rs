@@ -145,7 +145,7 @@ impl Player
     }
 
     pub fn set_device_numbers(&mut self, device_numbers: Vec<i32>) {
-        self.device_number = *device_numbers.get(0).unwrap_or(&-1);
+        self.device_number = *device_numbers.first().unwrap_or(&-1);
 
         self.device_numbers = device_numbers;
     }

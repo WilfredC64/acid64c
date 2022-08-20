@@ -686,7 +686,7 @@ impl NetworkSidDevice {
                 }
             }
         }
-        return vec![0];
+        vec![0]
     }
 
     fn flush_buffer(&mut self) -> (CommandResponse, Vec<u8>) {
