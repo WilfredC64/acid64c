@@ -11,7 +11,7 @@ build = "build.rs"
 
 [dependencies]
 chrono = "0.4"
-crossterm = "0.25.0"
+crossterm = "0.25"
 encoding = "0.2"
 if-addrs = "0.7"
 libloading = "0.7"
