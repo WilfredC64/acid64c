@@ -1,8 +1,8 @@
-// Copyright (C) 2019 - 2021 Wilfred Bos
+// Copyright (C) 2019 - 2022 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use encoding::{Encoding, DecoderTrap, EncoderTrap};
-use encoding::all::ISO_8859_1;
+use encoding::all::WINDOWS_1252;
 use libloading::{Library, Symbol};
 use std::ffi::{CString, CStr};
 use std::mem;
@@ -404,7 +404,7 @@ impl Acid64Library {
 
     #[inline]
     fn convert_string_to_ansi_pchar(text: &str) -> *const i8 {
-        CString::new(ISO_8859_1.encode(text, EncoderTrap::Ignore).unwrap()).unwrap().into_raw()
+        CString::new(WINDOWS_1252.encode(text, EncoderTrap::Ignore).unwrap()).unwrap().into_raw()
     }
 
     #[inline]
@@ -412,7 +412,7 @@ impl Acid64Library {
         if text.is_null() {
             None
         } else {
-            Some(ISO_8859_1.decode(CStr::from_ptr(text).to_bytes(), DecoderTrap::Ignore).unwrap())
+            Some(WINDOWS_1252.decode(CStr::from_ptr(text).to_bytes(), DecoderTrap::Ignore).unwrap())
         }
     }
 }
