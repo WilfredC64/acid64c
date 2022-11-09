@@ -561,13 +561,7 @@ impl Player
 
     fn get_valid_device_number(&mut self, device_number: i32) -> i32 {
         if device_number == -1 {
-            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance, 0);
-
-            if sid_model == SID_MODEL_8580 {
-                1
-            } else {
-                0
-            }
+            i32::from(self.acid64_lib.get_sid_model(self.c64_instance, 0) == SID_MODEL_8580)
         } else {
             device_number
         }
