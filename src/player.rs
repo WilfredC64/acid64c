@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2021 Wilfred Bos
+// Copyright (C) 2019 - 2022 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod acid64_library;
@@ -9,23 +9,26 @@ mod network_sid_device;
 mod sid_device;
 mod sid_devices;
 
+use parking_lot::Mutex;
 use std::sync::atomic::{Ordering, AtomicI32};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{thread, time};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 use crate::utils::{hvsc, network};
 use self::acid64_library::Acid64Library;
-use self::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse};
+use self::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DUMMY_REG};
 use self::sid_devices::{SidDevices, SidDevicesFacade};
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
 const NTSC_CYCLES_PER_SECOND: u32 = 263 * 65 * 60;
+const ONE_MHZ_CYCLES_PER_SECOND: u32 = 1000000;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT_NUMBER: &str = "6581";
 
 const MIN_CYCLE_SID_WRITE: u32 = 8;
+const MIN_CYCLE_SID_WRITE_FAST_FORWARD: u32 = 8;
 
 const SID_MODEL_8580: i32 = 2;
 
@@ -44,7 +47,9 @@ pub type AbortType = i32;
 pub enum PlayerCommand {
     Play,
     Pause,
-    Stop
+    Stop,
+    EnableFastForward,
+    DisableFastForward
 }
 
 #[derive(Copy, Clone)]
@@ -75,6 +80,11 @@ impl SidCommand {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct PlayerOutput {
+    pub time: u32,
+}
+
 pub struct Player {
     acid64_lib: Acid64Library,
     c64_instance: usize,
@@ -92,7 +102,10 @@ pub struct Player {
     sid_written: bool,
     last_sid_write: [u8; 256],
     device_names: Arc<Mutex<Vec<String>>>,
-    adjust_clock: bool
+    adjust_clock: bool,
+    fast_forward_speed: i32,
+    total_cycles: u32,
+    output: Arc<Mutex<PlayerOutput>>,
 }
 
 impl Drop for Player {
@@ -125,7 +138,10 @@ impl Player
             sid_written: false,
             last_sid_write: [0; 256],
             device_names: Arc::new(Mutex::new(Vec::new())),
-            adjust_clock: false
+            adjust_clock: false,
+            fast_forward_speed: 1,
+            total_cycles: 0,
+            output: Arc::new(Mutex::new(PlayerOutput { time: 0 })),
         };
 
         player_properties.setup_c64_instance();
@@ -165,9 +181,9 @@ impl Player
     pub fn play(&mut self) {
         let cycles_per_second = self.get_cycles_per_second();
 
-        let mut delay_cycles: u32 = 0;
         let mut idle_count: u32 = 0;
 
+        self.total_cycles = 0;
         self.sid_written = false;
         self.paused = false;
         self.abort_type.store(ABORT_NO, Ordering::SeqCst);
@@ -183,21 +199,30 @@ impl Player
             }
 
             if device_state == DeviceResponse::Busy {
+                if self.should_quit() {
+                    break;
+                }
+
+                self.update_player_output();
+
                 thread::sleep(time::Duration::from_millis(BUSY_WAIT_MILLIS));
                 device_state = self.sid_device.as_mut().unwrap().retry_write(self.device_number);
                 continue;
             }
 
             self.acid64_lib.run(self.c64_instance);
+            self.update_player_output();
             let sid_command = SidCommand::from_integer(self.acid64_lib.get_command(self.c64_instance));
 
             match sid_command {
                 SidCommand::Delay => {
-                    delay_cycles += self.acid64_lib.get_cycles(self.c64_instance) as u32;
+                    device_state = self.process_sid_write(DUMMY_REG, 0);
                 },
                 SidCommand::Write => {
-                    device_state = self.process_sid_write(delay_cycles);
-                    delay_cycles = 0;
+                    let reg = self.acid64_lib.get_register(self.c64_instance);
+                    let data = self.acid64_lib.get_data(self.c64_instance);
+
+                    device_state = self.process_sid_write(reg, data);
                     idle_count = 0;
                 },
                 SidCommand::Read => {
@@ -225,16 +250,19 @@ impl Player
             self.sid_device.as_mut().unwrap().silent_all_sids(self.device_number, true);
         }
 
+        self.fast_forward_speed = 1;
+
         self.abort_type.store(ABORTED, Ordering::SeqCst);
     }
 
-    #[inline]
     fn process_player_commands(&mut self) {
+        if self.is_aborted_for_command() {
+            self.abort_type.store(ABORT_NO, Ordering::SeqCst);
+        }
+
         let recv_result = self.cmd_receiver.try_recv();
 
         if let Ok(result) = recv_result {
-            self.abort_type.store(ABORT_NO, Ordering::SeqCst);
-
             match result {
                 PlayerCommand::Play => {
                     if self.paused {
@@ -249,9 +277,39 @@ impl Player
                     device.silent_all_sids(self.device_number, false);
                     self.paused = true;
                 },
+                PlayerCommand::EnableFastForward => {
+                    self.enable_fast_forward();
+                },
+                PlayerCommand::DisableFastForward => {
+                    self.disable_fast_forward();
+                },
                 _ => ()
             }
         }
+    }
+
+    pub fn update_player_output(&mut self) {
+        let mut output = self.output.lock();
+        output.time = self.acid64_lib.get_time(self.c64_instance);
+    }
+
+    fn is_aborted_for_command(&self) -> bool {
+        let abort_type = self.abort_type.load(Ordering::SeqCst);
+        abort_type == ABORT_FOR_COMMAND
+    }
+
+    pub fn enable_fast_forward(&mut self) {
+        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+        self.fast_forward_speed = -1;
+        self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
+        self.write_last_sid_writes();
+    }
+
+    pub fn disable_fast_forward(&mut self) {
+        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+        self.fast_forward_speed = 1;
+        self.sid_device.as_mut().unwrap().disable_turbo_mode(self.device_number);
+        self.write_last_sid_writes();
     }
 
     pub fn get_device_names(&self) -> Arc<Mutex<Vec<String>>> {
@@ -275,18 +333,22 @@ impl Player
     }
 
     fn set_device_names(&mut self, new_device_names: &[String]) {
-        let mut device_names = self.device_names.lock().unwrap();
+        let mut device_names = self.device_names.lock();
         device_names.clear();
         device_names.extend_from_slice(new_device_names);
     }
 
-    fn get_cycles_per_second(&self) -> u32 {
-        let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
-
-        match c64_model {
-            2 => NTSC_CYCLES_PER_SECOND,
-            _ => PAL_CYCLES_PER_SECOND
+    fn get_cycles_per_second(&mut self) -> u32 {
+        let device_clock = self.sid_device.as_mut().unwrap().get_device_clock(self.device_number);
+        match device_clock {
+            SidClock::Pal => PAL_CYCLES_PER_SECOND,
+            SidClock::Ntsc => NTSC_CYCLES_PER_SECOND,
+            SidClock::OneMhz => ONE_MHZ_CYCLES_PER_SECOND
         }
+    }
+
+    pub fn get_player_output(&mut self) -> Arc<Mutex<PlayerOutput>> {
+        Arc::clone(&self.output)
     }
 
     pub fn get_song_length(&self) -> i32 {
@@ -398,28 +460,25 @@ impl Player
         self.acid64_lib.get_number_of_sids(self.c64_instance)
     }
 
-    #[inline]
     fn should_quit(&mut self) -> bool {
         let abort_type = self.abort_type.load(Ordering::SeqCst);
         abort_type == ABORT_TO_QUIT || !self.sid_device.as_mut().unwrap().is_connected(self.device_number)
     }
 
-    #[inline]
-    fn process_sid_write(&mut self, delay_cycles: u32) -> DeviceResponse {
-        let cycles = delay_cycles + self.acid64_lib.get_cycles(self.c64_instance) as u32;
-        let register = self.acid64_lib.get_register(self.c64_instance);
-        let data = self.acid64_lib.get_data(self.c64_instance);
+    fn process_sid_write(&mut self, reg: u8, data: u8) -> DeviceResponse {
+        let cycles_real = self.acid64_lib.get_cycles(self.c64_instance) as u32;
+        let cycles = self.adjust_cycles(cycles_real);
 
-        self.last_sid_write[register as usize] = data;
-        self.write_to_sid(self.device_number, cycles, register, data)
+        self.total_cycles = cycles_real;
+
+        self.last_sid_write[reg as usize] = data;
+        self.write_to_sid(self.device_number, cycles, reg, data)
     }
 
-    #[inline]
     fn write_to_sid(&mut self, device_number: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
         self.sid_device.as_mut().unwrap().try_write(device_number, cycles, reg, data)
     }
 
-    #[inline]
     fn write_last_sid_write(&mut self, reg: u8) {
         self.write_to_sid(self.device_number, MIN_CYCLE_SID_WRITE, reg, self.last_sid_write[reg as usize]);
     }
@@ -437,7 +496,6 @@ impl Player
         }
     }
 
-    #[inline]
     fn write_voice_regs(&mut self, voice_nr: u8, sid_base: u8) {
         let voice_offset = voice_nr * 7;
         let reg_base = sid_base + voice_offset;
@@ -451,12 +509,26 @@ impl Player
         self.write_last_sid_write(reg_base + 0x04);
     }
 
-    #[inline]
     fn write_filter_and_volume_regs(&mut self, sid_base: u8) {
         self.write_last_sid_write(sid_base + 0x15);
         self.write_last_sid_write(sid_base + 0x16);
         self.write_last_sid_write(sid_base + 0x17);
         self.write_last_sid_write(sid_base + 0x18);
+    }
+
+    fn adjust_cycles(&mut self, cycles: u32) -> u32 {
+        if self.fast_forward_speed == -1 {
+            MIN_CYCLE_SID_WRITE_FAST_FORWARD
+        } else if self.fast_forward_speed > 1 && cycles > MIN_CYCLE_SID_WRITE_FAST_FORWARD {
+            let ff_cycles = cycles / (self.fast_forward_speed as u32);
+            if ff_cycles < MIN_CYCLE_SID_WRITE_FAST_FORWARD {
+                MIN_CYCLE_SID_WRITE_FAST_FORWARD
+            } else {
+                ff_cycles
+            }
+        } else {
+            cycles
+        }
     }
 
     fn get_hvsc_root_location(&self, hvsc_location: Option<String>) -> Result<Option<String>, String> {
@@ -574,7 +646,7 @@ impl Player
             device_number = match self.device_numbers.get(i as usize) {
                 Some(device_found) => {
                     let device_found = *device_found;
-                    let device_number = self.get_valid_device_number(device_found as i32);
+                    let device_number = self.get_valid_device_number(device_found);
                     let _ = std::mem::replace(&mut self.device_numbers[i as usize], device_number);
                     device_number
                 }

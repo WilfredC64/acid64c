@@ -272,7 +272,6 @@ impl HardsidUsbDevice {
         self.init_device_settings();
     }
 
-    #[inline]
     fn init_device_settings(&mut self) {
         self.device_count = 0;
         self.sid_count = 0;
@@ -289,7 +288,6 @@ impl HardsidUsbDevice {
         self.init_write_state();
     }
 
-    #[inline]
     fn init_write_state(&mut self) {
         self.sid_write_fifo.clear();
         self.cycles_to_compensate = 0;
@@ -376,7 +374,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn wait_for_uplay_activation(&mut self, dev_nr: i32) {
         if self.device_type[dev_nr as usize] == DEV_TYPE_HS_UPLAY {
             if self.device_init_done[dev_nr as usize] && self.prev_uplay_dev_nr == dev_nr {
@@ -553,7 +550,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn reset_sid_register(&mut self, dev_nr: i32, reg: u8) {
         self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0xff);
         self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x08);
@@ -565,7 +561,7 @@ impl HardsidUsbDevice {
     pub fn reset_all_buffers(&mut self, dev_nr: i32) {
         if self.is_connected() {
             let dev_nr = self.device_id[dev_nr as usize];
-            self.sid_device.as_mut().unwrap().abort_play(dev_nr as u8);
+            self.sid_device.as_mut().unwrap().abort_play(dev_nr);
         }
     }
 
@@ -584,7 +580,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn are_multiple_sid_chips_supported(&mut self, dev_nr: i32) -> bool {
         self.device_type[dev_nr as usize] == DEV_TYPE_HS_4U
     }
@@ -612,7 +607,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn map_device_to_reg(&mut self, dev_nr: i32, reg: u8) -> u8 {
         let reg = self.filter_reg_for_unsupported_writes(dev_nr, reg);
         let mapped_dev_nr = self.map_reg_to_device(reg);
@@ -620,7 +614,6 @@ impl HardsidUsbDevice {
         (reg & 0x1f) | base_reg
     }
 
-    #[inline]
     fn filter_reg_for_unsupported_writes(&mut self, dev_nr: i32, reg: u8) -> u8 {
         if self.number_of_sids > 1 && !self.are_multiple_sid_chips_supported(dev_nr) && reg >= 0x20 {
             // ignore second SID chip for devices that don't support accessing multiple SID chip simultaneously
@@ -630,7 +623,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn map_reg_to_device(&mut self, reg: u8) -> i32 {
         let sid_nr = reg >> 5;
         if self.number_of_sids > 1 && sid_nr < self.sid_count as u8 {
@@ -653,13 +645,11 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn push_write(&mut self, command: DeviceCommand, reg: u8, data: u8, cycles: u16) {
         let sid_write = SidWrite::new(command, reg, data, cycles);
         self.sid_write_fifo.push_back(sid_write);
     }
 
-    #[inline]
     fn create_write(&mut self, reg: u8, data: u8) {
         if !self.use_native_device_clock {
             self.adjust_frequency(reg, data);
@@ -685,7 +675,6 @@ impl HardsidUsbDevice {
         self.process_write_fifo(dev_nr)
     }
 
-    #[inline]
     fn process_write_fifo(&mut self, dev_nr: i32) -> DeviceResponse {
         while !self.sid_write_fifo.is_empty() {
             let sid_write = self.sid_write_fifo.pop_front().unwrap();
@@ -718,7 +707,6 @@ impl HardsidUsbDevice {
         DeviceResponse::Ok
     }
 
-    #[inline]
     fn adjust_frequency(&mut self, reg: u8, data: u8) {
         let reg_offset = reg & 0x1f;
 
@@ -736,7 +724,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn adjust_frequency_for_voice(&mut self, voice_nr: u8, base_reg: u8, reg: u8, data: u8) {
         if reg <= 1 {
             let voice_index = voice_nr + (base_reg >> 5) * 3;
@@ -758,7 +745,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn try_write_sync(&mut self, dev_nr: i32, reg: u8, data: u8) {
         if self.is_connected() {
             let physical_dev_nr = self.device_id[dev_nr as usize];
@@ -773,7 +759,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn try_write_async(&mut self, dev_nr: i32, reg: u8, data: u8) -> u8 {
         if self.is_connected() {
             let physical_dev_nr = self.device_id[dev_nr as usize];
@@ -783,7 +768,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn try_flush(&mut self, dev_nr: i32) {
         self.sid_write_fifo.clear();
 
@@ -800,7 +784,6 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn create_delay(&mut self, cycles: u32) {
         const MINIMUM_CYCLES: u32 = 100;
 
@@ -840,13 +823,12 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn try_delay_sync(&mut self, dev_nr: i32, cycles: u16) {
         if self.is_connected() {
             let dev_nr = self.device_id[dev_nr as usize];
 
             loop {
-                let state = self.sid_device.as_mut().unwrap().delay(dev_nr as u8, cycles);
+                let state = self.sid_device.as_mut().unwrap().delay(dev_nr, cycles);
 
                 if self.process_response(state) {
                     break;
@@ -855,18 +837,16 @@ impl HardsidUsbDevice {
         }
     }
 
-    #[inline]
     fn try_delay_async(&mut self, dev_nr: i32, cycles: u16) -> u8 {
         if self.is_connected() {
             let dev_nr = self.device_id[dev_nr as usize];
 
-            self.sid_device.as_mut().unwrap().delay(dev_nr as u8, cycles)
+            self.sid_device.as_mut().unwrap().delay(dev_nr, cycles)
         } else {
             HSID_USB_STATE_OK
         }
     }
 
-    #[inline]
     fn process_response(&mut self, state: u8) -> bool {
         if state == HSID_USB_STATE_ERROR {
             self.disconnect_with_error(ERROR_MSG_DEVICE_FAILURE.to_string());
@@ -886,7 +866,6 @@ impl HardsidUsbDevice {
         false
     }
 
-    #[inline]
     fn is_aborted(&self) -> bool {
         let abort_type = self.abort_type.load(Ordering::SeqCst);
         abort_type != ABORT_NO && abort_type != ABORTING

@@ -133,7 +133,6 @@ impl HardSidUsb {
         }
     }
 
-    #[inline]
     unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
         if text.is_null() {
             None

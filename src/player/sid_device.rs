@@ -31,6 +31,8 @@ pub enum DeviceId {
     NetworkSidDevice = 1
 }
 
+pub const DUMMY_REG: u8 = 0x1e;
+
 pub trait SidDevice {
     fn get_device_id(&mut self, dev_nr: i32) -> DeviceId;
 

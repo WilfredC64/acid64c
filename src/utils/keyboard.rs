@@ -5,6 +5,8 @@ use crossterm::event::{poll, read, Event, KeyCode, KeyEvent};
 use std::time::Duration;
 
 pub const ESC_KEY: char = '\x1b';
+pub const LEFT_KEY: char = '\x25';
+pub const RIGHT_KEY: char = '\x27';
 
 pub fn get_char_from_input() -> Option<char> {
     if poll(Duration::from_millis(0)).unwrap() {
@@ -27,6 +29,8 @@ fn read_char() -> Result<Option<char>, ()> {
         match code {
             KeyCode::Char(c) => return Ok(Some(c)),
             KeyCode::Esc => return Ok(Some(ESC_KEY)),
+            KeyCode::Right => return Ok(Some(RIGHT_KEY)),
+            KeyCode::Left => return Ok(Some(LEFT_KEY)),
             _ => ()
         }
     }

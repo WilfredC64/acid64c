@@ -55,12 +55,14 @@ or directly from the target folder:
 Make sure that the acid64pro.dll is in the same folder as the acid64c.exe executable.
 
 ## Keys
-During playback you can use the following keys:
+During playback, you can use the following keys:
 ```
 1-9, 0: play sub tune #1-#9, #10
 +: play next sub tune
 -: play previous sub tune
 p: pause/resume playback
+Cursor-Left: Disable fast forward
+Cursor-Right: Toggle fast forward
 Escape (ESC) key: exit program
 ```
 

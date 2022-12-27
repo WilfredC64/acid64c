@@ -402,12 +402,10 @@ impl Acid64Library {
         }
     }
 
-    #[inline]
     fn convert_string_to_ansi_pchar(text: &str) -> *const i8 {
         CString::new(WINDOWS_1252.encode(text, EncoderTrap::Ignore).unwrap()).unwrap().into_raw()
     }
 
-    #[inline]
     unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
         if text.is_null() {
             None

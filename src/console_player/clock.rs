@@ -4,13 +4,13 @@
 use std::io::stdout;
 use crossterm::cursor::{Hide, MoveLeft, MoveRight, SavePosition, RestorePosition, Show};
 use crossterm::execute;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub struct Clock {
-    seconds_counter: Arc<AtomicIsize>,
+    counter: Arc<AtomicUsize>,
     timer: timer::Timer,
-    previous_count: isize,
+    previous_count: usize,
     guard: Option<timer::Guard>,
     clock_length: u16,
     paused: Arc<AtomicBool>
@@ -19,9 +19,9 @@ pub struct Clock {
 impl Clock {
     pub fn new() -> Clock {
         Clock {
-            seconds_counter: Arc::new(AtomicIsize::new(0)),
+            counter: Arc::new(AtomicUsize::new(0)),
             timer: timer::Timer::new(),
-            previous_count: -1,
+            previous_count: 0,
             guard: None,
             clock_length: 0,
             paused: Arc::new(AtomicBool::new(false))
@@ -34,21 +34,25 @@ impl Clock {
 
     pub fn start(&mut self) {
         self.pause(false);
-        self.seconds_counter.store(0, Ordering::Relaxed);
+        self.counter.store(0, Ordering::Relaxed);
 
-        let counter = Arc::clone(&self.seconds_counter);
+        let counter = Arc::clone(&self.counter);
         let paused = Arc::clone(&self.paused);
 
         let guard = {
-            self.timer.schedule_repeating(chrono::Duration::milliseconds(1000), move || {
+            self.timer.schedule_repeating(chrono::Duration::milliseconds(20), move || {
                 if !paused.load(Ordering::Relaxed) {
-                    counter.fetch_add(1, Ordering::Relaxed);
+                    counter.fetch_add(20, Ordering::Relaxed);
                 }
             })
         };
         self.guard = Some(guard);
 
         execute!(stdout(), Hide, MoveLeft(self.clock_length), SavePosition).unwrap();
+    }
+
+    pub fn set_clock(&mut self, millis: usize) {
+        self.counter.store(millis, Ordering::Relaxed);
     }
 
     pub fn pause(&mut self, pause: bool) {
@@ -61,12 +65,12 @@ impl Clock {
     }
 
     pub fn refresh_clock(&mut self) {
-        let seconds = self.seconds_counter.load(Ordering::Relaxed);
+        let millis = self.counter.load(Ordering::Relaxed);
 
-        if self.previous_count != seconds {
-            self.previous_count = seconds;
+        if self.previous_count != millis {
+            self.previous_count = millis;
 
-            let time = Clock::convert_seconds_to_time_string(seconds as u32, false);
+            let time = Clock::convert_seconds_to_time_string((millis / 1000) as u32, false);
             print!("{}", time);
             execute!(stdout(), RestorePosition).unwrap();
         }
