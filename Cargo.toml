@@ -23,7 +23,7 @@ winres = "0.1"
 
 [package.metadata.winres]
 ProductName = "ACID64 Console Player"
-LegalCopyright = "Copyright © 2003 - 2022 Wilfred Bos"
+LegalCopyright = "Copyright © 2003 - 2023 Wilfred Bos"
 
 [profile.release]
 codegen-units = 1

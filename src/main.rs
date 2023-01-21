@@ -67,7 +67,7 @@ fn run() -> Result<(), String> {
 }
 
 fn print_usage() {
-    println!("ACID64 Console v1.09 - Copyright (c) 2003-2022 Wilfred Bos");
+    println!("ACID64 Console v1.09 - Copyright (c) 2003-2023 Wilfred Bos");
     println!("\nUsage: acid64c <options> <file_name>");
     println!("\n<Options>");
     println!("  -c: adjust clock for devices that don't support PAL/NTSC clock");
