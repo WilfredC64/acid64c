@@ -1,11 +1,12 @@
-// Copyright (C) 2019 - 2022 Wilfred Bos
+// Copyright (C) 2019 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use std::io::prelude::*;
-use std::net::{TcpStream, Shutdown};
+use std::net::{TcpStream, Shutdown, ToSocketAddrs};
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
 
+use crate::utils::network;
 use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId, DUMMY_REG};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 
@@ -178,6 +179,22 @@ impl SidDevice for NetworkSidDeviceFacade {
     fn get_device_clock(&mut self, _dev_nr: i32) -> SidClock {
         self.ns_device.get_device_clock()
     }
+
+    fn has_remote_sidplayer(&mut self, _dev_nr: i32) -> bool {
+        false
+    }
+
+    fn send_sid(&mut self, _dev_nr: i32, _filename: &str, _song_number: i32, _sid_data: &[u8], _ssl_data: &[u8]) {
+        // not supported
+    }
+
+    fn stop_sid(&mut self, _dev_nr: i32) {
+        // not supported
+    }
+
+    fn set_cycles_in_fifo(&mut self, _dev_nr: i32, _cycles: u32) {
+        // not supported
+    }
 }
 
 pub struct NetworkSidDevice {
@@ -218,26 +235,34 @@ impl NetworkSidDevice {
         }
     }
 
-    pub fn connect(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
+    pub fn connect(&mut self, host_name: &str, port: &str) -> Result<(), String> {
         self.disconnect();
         self.last_error = None;
 
-        let server_url = [ip_address, port].join(":").parse().unwrap();
+        if !network::is_local_ip_address(host_name) {
+            return Err(format!("{host_name} is not in the local network or invalid."));
+        }
 
-        if let Ok(stream) = TcpStream::connect_timeout(&server_url, time::Duration::from_millis(SOCKET_CONNECTION_TIMEOUT)) {
-            self.sid_device = Some(stream);
+        let mut addresses = [host_name, port].join(":").to_socket_addrs().unwrap();
 
-            self.interface_version = self.get_version();
+        if let Some(socket_address) = addresses.find(|socket| socket.is_ipv4()) {
+            if let Ok(stream) = TcpStream::connect_timeout(&socket_address, time::Duration::from_millis(SOCKET_CONNECTION_TIMEOUT)) {
+                self.sid_device = Some(stream);
 
-            if self.interface_version >= 2 {
-                self.device_count = self.get_config_count();
+                self.interface_version = self.get_version();
+
+                if self.interface_version >= 2 {
+                    self.device_count = self.get_config_count();
+                } else {
+                    self.device_count = DEFAULT_DEVICE_COUNT_INTERFACE_V1;
+                }
+
+                Ok(())
             } else {
-                self.device_count = DEFAULT_DEVICE_COUNT_INTERFACE_V1;
+                Err(format!("Could not connect to: {}.", &socket_address))
             }
-
-            Ok(())
         } else {
-            Err(format!("Could not connect to: {}.", &server_url))
+            Err(format!("Could not find IPV4 address for: {}.", &host_name))
         }
     }
 

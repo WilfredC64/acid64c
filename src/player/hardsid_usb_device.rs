@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2022 Wilfred Bos
+// Copyright (C) 2020 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use super::clock_adjust::ClockAdjust;
@@ -142,6 +142,22 @@ impl SidDevice for HardsidUsbDeviceFacade {
     fn get_device_clock(&mut self, _dev_nr: i32) -> SidClock {
         self.hs_device.get_device_clock()
     }
+
+    fn has_remote_sidplayer(&mut self, _dev_nr: i32) -> bool {
+        false
+    }
+
+    fn send_sid(&mut self, _dev_nr: i32, _filename: &str, _song_number: i32, _sid_data: &[u8], _ssl_data: &[u8]) {
+        // not supported
+    }
+
+    fn stop_sid(&mut self, _dev_nr: i32) {
+        // not supported
+    }
+
+    fn set_cycles_in_fifo(&mut self, _dev_nr: i32, _cycles: u32) {
+        // not supported
+    }
 }
 
 #[allow(dead_code)]
@@ -230,7 +246,7 @@ impl HardsidUsbDevice {
         if !usb_device.init_sidplay_mode() {
             let unknown_device = "unknown".to_string();
             let error = usb_device.get_last_error().unwrap_or(unknown_device);
-            Err(format!("{} {}.", ERROR_MSG_INIT_DEVICE, error))
+            Err(format!("{ERROR_MSG_INIT_DEVICE} {error}."))
         } else {
             let dev_count = usb_device.get_dev_count();
             self.device_count = dev_count as i32;

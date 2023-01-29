@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2022 Wilfred Bos
+// Copyright (C) 2019 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod acid64_library;
@@ -6,17 +6,24 @@ mod clock_adjust;
 mod hardsid_usb;
 mod hardsid_usb_device;
 mod network_sid_device;
+mod sid_data_processor;
 mod sid_device;
 mod sid_devices;
+mod ultimate_device;
 
 use parking_lot::Mutex;
+use std::fs::File;
+use std::io;
+use std::io::Read;
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::sync::Arc;
 use std::{thread, time};
+use std::collections::VecDeque;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
-use crate::utils::{hvsc, network};
+use crate::utils::hvsc;
 use self::acid64_library::Acid64Library;
+use self::sid_data_processor::{SidDataProcessor, SidWrite};
 use self::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DUMMY_REG};
 use self::sid_devices::{SidDevices, SidDevicesFacade};
 
@@ -26,6 +33,9 @@ const ONE_MHZ_CYCLES_PER_SECOND: u32 = 1000000;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT_NUMBER: &str = "6581";
+
+const DEFAULT_ULTIMATE_HOST: &str = "";
+const DEFAULT_ULTIMATE_PORT_NUMBER: &str = "80";
 
 const MIN_CYCLE_SID_WRITE: u32 = 8;
 const MIN_CYCLE_SID_WRITE_FAST_FORWARD: u32 = 8;
@@ -75,7 +85,7 @@ impl SidCommand {
             5 => SidCommand::InitDone,
             6 => SidCommand::SeekDone,
             7 => SidCommand::SkipSilenceDone,
-            _ => panic!("Unknown value: {}", value),
+            _ => panic!("Unknown value: {value}"),
         }
     }
 }
@@ -89,18 +99,22 @@ pub struct Player {
     acid64_lib: Acid64Library,
     c64_instance: usize,
     sid_device: Option<Box<dyn SidDevice + Send>>,
+    sid_data_processor: SidDataProcessor,
     filename: Option<String>,
     device_number: i32,
     device_numbers: Vec<i32>,
     song_number: i32,
-    host_name: String,
-    port: String,
+    host_name_sid_device: String,
+    port_sid_device: String,
+    host_name_ultimate: String,
+    port_ultimate: String,
     abort_type: Arc<AtomicI32>,
     cmd_sender: SyncSender<PlayerCommand>,
     cmd_receiver: Receiver<PlayerCommand>,
     paused: bool,
     sid_written: bool,
     last_sid_write: [u8; 256],
+    redo_buffer: VecDeque<SidWrite>,
     device_names: Arc<Mutex<Vec<String>>>,
     adjust_clock: bool,
     fast_forward_speed: i32,
@@ -125,18 +139,22 @@ impl Player
             acid64_lib: Acid64Library::load().expect("acid64pro library could not be loaded"),
             c64_instance: 0,
             sid_device: None,
+            sid_data_processor: SidDataProcessor::new(),
             filename: None,
             device_number: 0,
             device_numbers: vec![],
             song_number: 0,
-            host_name: DEFAULT_HOST.to_string(),
-            port: DEFAULT_PORT_NUMBER.to_string(),
+            host_name_sid_device: DEFAULT_HOST.to_string(),
+            port_sid_device: DEFAULT_PORT_NUMBER.to_string(),
+            host_name_ultimate: DEFAULT_ULTIMATE_HOST.to_string(),
+            port_ultimate: DEFAULT_ULTIMATE_PORT_NUMBER.to_string(),
             abort_type: Arc::new(AtomicI32::new(ABORT_NO)),
             cmd_sender,
             cmd_receiver,
             paused: false,
             sid_written: false,
             last_sid_write: [0; 256],
+            redo_buffer: VecDeque::new(),
             device_names: Arc::new(Mutex::new(Vec::new())),
             adjust_clock: false,
             fast_forward_speed: 1,
@@ -166,8 +184,12 @@ impl Player
         self.device_numbers = device_numbers;
     }
 
-    pub fn set_host_name(&mut self, host_name: String) {
-        self.host_name = host_name;
+    pub fn set_sid_device_host_name(&mut self, host_name: String) {
+        self.host_name_sid_device = host_name;
+    }
+
+    pub fn set_ultimate_device_host_name(&mut self, host_name: String) {
+        self.host_name_ultimate = host_name;
     }
 
     pub fn get_library_version(&self) -> i32 {
@@ -188,10 +210,21 @@ impl Player
         self.paused = false;
         self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
+        self.redo_buffer.clear();
+
+        if self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
+            if let Some(filename) = self.filename.clone() {
+                self.send_sid(&filename, self.song_number);
+            }
+        }
+
+        self.sid_data_processor.init(0);
+        self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
+
         let mut device_state = DeviceResponse::Ok;
 
         while !self.should_quit() {
-            self.process_player_commands();
+            self.process_player_command();
 
             if self.paused {
                 thread::sleep(time::Duration::from_millis(PAUSE_SLEEP_MILLIS));
@@ -205,40 +238,50 @@ impl Player
 
                 self.update_player_output();
 
-                thread::sleep(time::Duration::from_millis(BUSY_WAIT_MILLIS));
+                let next_event = self.sid_data_processor.get_next_event_in_millis();
+                if next_event >= 10 {
+                    thread::sleep(time::Duration::from_millis(BUSY_WAIT_MILLIS));
+                }
+
                 device_state = self.sid_device.as_mut().unwrap().retry_write(self.device_number);
                 continue;
             }
 
-            self.acid64_lib.run(self.c64_instance);
-            self.update_player_output();
-            let sid_command = SidCommand::from_integer(self.acid64_lib.get_command(self.c64_instance));
+            if !self.redo_buffer.is_empty() {
+                device_state = self.process_redo_buffer();
 
-            match sid_command {
-                SidCommand::Delay => {
-                    device_state = self.process_sid_write(DUMMY_REG, 0);
-                },
-                SidCommand::Write => {
-                    let reg = self.acid64_lib.get_register(self.c64_instance);
-                    let data = self.acid64_lib.get_data(self.c64_instance);
+                self.update_player_output();
+            } else {
+                self.acid64_lib.run(self.c64_instance);
+                self.update_player_output();
+                let sid_command = SidCommand::from_integer(self.acid64_lib.get_command(self.c64_instance));
 
-                    device_state = self.process_sid_write(reg, data);
-                    idle_count = 0;
-                },
-                SidCommand::Read => {
-                    idle_count = 0;
-                },
-                SidCommand::Idle => {
-                    if self.sid_written {
-                        idle_count += cycles_per_second / 1000;
+                match sid_command {
+                    SidCommand::Delay => {
+                        device_state = self.process_sid_write(DUMMY_REG, 0);
+                    },
+                    SidCommand::Write => {
+                        let reg = self.acid64_lib.get_register(self.c64_instance);
+                        let data = self.acid64_lib.get_data(self.c64_instance);
 
-                        if idle_count >= cycles_per_second {
-                            self.sid_device.as_mut().unwrap().dummy_write(self.device_number, cycles_per_second);
-                            idle_count -= cycles_per_second
+                        device_state = self.process_sid_write(reg, data);
+                        idle_count = 0;
+                    },
+                    SidCommand::Read => {
+                        idle_count = 0;
+                    },
+                    SidCommand::Idle => {
+                        if self.sid_written {
+                            idle_count += cycles_per_second / 1000;
+
+                            if idle_count >= cycles_per_second {
+                                self.sid_device.as_mut().unwrap().dummy_write(self.device_number, cycles_per_second);
+                                idle_count -= cycles_per_second
+                            }
                         }
-                    }
-                },
-                _ => (),
+                    },
+                    _ => (),
+                }
             }
         };
 
@@ -255,7 +298,7 @@ impl Player
         self.abort_type.store(ABORTED, Ordering::SeqCst);
     }
 
-    fn process_player_commands(&mut self) {
+    fn process_player_command(&mut self) {
         if self.is_aborted_for_command() {
             self.abort_type.store(ABORT_NO, Ordering::SeqCst);
         }
@@ -267,7 +310,17 @@ impl Player
                 PlayerCommand::Play => {
                     if self.paused {
                         self.sid_device.as_mut().unwrap().reset_active_sids(self.device_number);
-                        self.write_last_sid_writes();
+                        self.reactivate_voices();
+                        self.sid_device.as_mut().unwrap().force_flush(self.device_number);
+
+                        self.rewrite_buffer();
+
+                        if self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
+                            if let Some(filename) = self.filename.clone() {
+                                let _ = self.restart_song();
+                                self.send_sid(&filename, self.song_number);
+                            }
+                        }
                     }
                     self.paused = false;
                 },
@@ -275,6 +328,9 @@ impl Player
                     let device = self.sid_device.as_mut().unwrap();
                     device.reset_all_buffers(self.device_number);
                     device.silent_all_sids(self.device_number, false);
+
+                    self.stop_player();
+
                     self.paused = true;
                 },
                 PlayerCommand::EnableFastForward => {
@@ -288,9 +344,116 @@ impl Player
         }
     }
 
+    fn process_redo_buffer(&mut self) -> DeviceResponse {
+        let mut total_cycles = 0;
+
+        while !self.redo_buffer.is_empty() {
+            let sid_write = self.redo_buffer.pop_front().unwrap();
+            let cycles = self.adjust_cycles(sid_write.cycles_real);
+
+            self.sid_data_processor.write(cycles, sid_write.reg, sid_write.data, sid_write.cycles_real);
+
+            let device_response = self.write_to_sid(self.device_number, cycles, sid_write.reg, sid_write.data);
+            if device_response == DeviceResponse::Busy {
+                return device_response;
+            }
+
+            total_cycles += cycles;
+            if total_cycles > 1000 {
+                break;
+            }
+        }
+
+        let cycles_in_fifo = self.sid_data_processor.get_cycles_in_fifo();
+        self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, cycles_in_fifo);
+
+        if self.redo_buffer.is_empty() {
+            self.sid_device.as_mut().unwrap().disable_turbo_mode(self.device_number);
+        }
+
+        DeviceResponse::Ok
+    }
+
+    pub fn stop_player(&mut self) {
+        if self.sid_device.is_some() && self.device_number != -1 && !self.paused && self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
+            self.sid_device.as_mut().unwrap().stop_sid(self.device_number);
+
+            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
+                self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
+            }
+        }
+    }
+
+    fn send_sid(&mut self, filename: &str, song_number: i32) {
+        if let Ok(sid_data) = Self::read_file(filename) {
+            self.acid64_lib.skip_silence(self.c64_instance, false);
+            self.acid64_lib.enable_volume_fix(self.c64_instance, false);
+
+            self.redo_buffer.clear();
+            self.sid_data_processor.init(0);
+            self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
+
+            self.sid_written = false;
+
+            let ssl_data = self.generate_ssl_data();
+            self.sid_device.as_mut().unwrap().send_sid(self.device_number, filename, song_number, &sid_data, &ssl_data);
+
+            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
+                self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
+            }
+        }
+    }
+
+    fn generate_ssl_data(&mut self) -> Vec<u8>{
+        let mut song_lengths_in_millis = vec![];
+        for song_number in 0..self.get_number_of_songs() {
+            self.acid64_lib.set_song_to_play(self.c64_instance, song_number);
+            song_lengths_in_millis.push(self.acid64_lib.get_song_length(self.c64_instance));
+        }
+
+        self.acid64_lib.set_song_to_play(self.c64_instance, self.song_number);
+
+        let mut song_lengths_in_bcd = vec![];
+        for song_length in song_lengths_in_millis {
+            let seconds_total = (song_length + 500) / 1000;
+            let seconds = seconds_total % 60;
+            let seconds = Self::int_to_bcd(seconds);
+
+            let minutes = seconds_total / 60 % 100;
+            let minutes = Self::int_to_bcd(minutes);
+            song_lengths_in_bcd.push(minutes as u8);
+            song_lengths_in_bcd.push(seconds as u8);
+        }
+        song_lengths_in_bcd
+    }
+
+    fn int_to_bcd(value: i32) -> i32 {
+        let mut value = value;
+        let mut result = 0;
+        let mut shift = 0;
+        while value > 0 {
+            result |= (value % 10) << shift;
+            value /= 10;
+            shift += 4;
+        }
+        result
+    }
+
+    fn read_file(filename: &str) -> io::Result<Vec<u8>> {
+        let mut data = vec![];
+        File::open(filename)?.read_to_end(&mut data)?;
+        Ok(data)
+    }
+
+    pub fn restart_song(&mut self) -> Result<(), String> {
+        self.set_song_to_play(self.song_number)
+    }
+
     pub fn update_player_output(&mut self) {
+        self.sid_data_processor.process_sid_write_fifo();
+
         let mut output = self.output.lock();
-        output.time = self.acid64_lib.get_time(self.c64_instance);
+        output.time = self.sid_data_processor.get_time_in_millis();
     }
 
     fn is_aborted_for_command(&self) -> bool {
@@ -299,17 +462,21 @@ impl Player
     }
 
     pub fn enable_fast_forward(&mut self) {
-        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        self.fast_forward_speed = -1;
-        self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
-        self.write_last_sid_writes();
+        if !self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
+            self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+            self.fast_forward_speed = -1;
+            self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
+            self.rewrite_buffer();
+        }
     }
 
     pub fn disable_fast_forward(&mut self) {
-        self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-        self.fast_forward_speed = 1;
-        self.sid_device.as_mut().unwrap().disable_turbo_mode(self.device_number);
-        self.write_last_sid_writes();
+        if !self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
+            self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+            self.fast_forward_speed = 1;
+            self.sid_device.as_mut().unwrap().disable_turbo_mode(self.device_number);
+            self.rewrite_buffer();
+        }
     }
 
     pub fn get_device_names(&self) -> Arc<Mutex<Vec<String>>> {
@@ -399,6 +566,10 @@ impl Player
         self.sid_device.as_mut().unwrap().get_device_info(device_number)
     }
 
+    pub fn has_remote_sidplayer(&mut self) -> bool {
+        self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number)
+    }
+
     pub fn setup_sldb_and_stil(&mut self, hvsc_location: Option<String>, load_stil: bool) -> Result<(), String> {
         let mut hvsc_root = self.get_hvsc_root_location(hvsc_location)?;
 
@@ -424,12 +595,15 @@ impl Player
 
     pub fn init_devices(&mut self) -> Result<(), String> {
         if self.sid_device.is_none() {
-            if !network::is_local_ip_address(&self.host_name) {
-                return Err(format!("{} is not in the local network or invalid.", self.host_name));
+            let mut devices = SidDevices::new(Arc::clone(&self.abort_type))
+                .connect_hardsid_device()
+                .connect_network_device(&self.host_name_sid_device, &self.port_sid_device)
+                .connect_ultimate_device(&self.host_name_ultimate, &self.port_ultimate);
+
+            if !devices.has_devices() && devices.has_errors() {
+                return Err(devices.errors());
             }
 
-            let mut devices = SidDevices::new(Arc::clone(&self.abort_type));
-            devices.connect(&self.host_name, &self.port)?;
             devices.set_native_device_clock(!self.adjust_clock);
 
             let sid_device = SidDevicesFacade{ devices };
@@ -444,11 +618,9 @@ impl Player
         let is_loaded = self.acid64_lib.load_file(self.c64_instance, filename);
 
         if !is_loaded {
-            Err(format!("File '{}' could not be loaded.", filename))
+            Err(format!("File '{filename}' could not be loaded."))
         } else {
             self.filename = Some(filename.to_string());
-            self.acid64_lib.skip_silence(self.c64_instance, true);
-            self.acid64_lib.enable_volume_fix(self.c64_instance, true);
 
             self.init_devices()?;
             self.configure_sid_device(false)?;
@@ -470,50 +642,89 @@ impl Player
         let cycles = self.adjust_cycles(cycles_real);
 
         self.total_cycles = cycles_real;
-
         self.last_sid_write[reg as usize] = data;
-        self.write_to_sid(self.device_number, cycles, reg, data)
+
+        self.sid_data_processor.write(cycles, reg, data, cycles_real);
+        let cycles_in_fifo = self.sid_data_processor.get_cycles_in_fifo();
+        self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, cycles_in_fifo);
+
+        let device_response = self.write_to_sid(self.device_number, cycles, reg, data);
+        if device_response == DeviceResponse::Busy {
+            return device_response;
+        }
+
+        DeviceResponse::Ok
     }
 
     fn write_to_sid(&mut self, device_number: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
         self.sid_device.as_mut().unwrap().try_write(device_number, cycles, reg, data)
     }
 
-    fn write_last_sid_write(&mut self, reg: u8) {
-        self.write_to_sid(self.device_number, MIN_CYCLE_SID_WRITE, reg, self.last_sid_write[reg as usize]);
+    fn write_to_sid_direct(&mut self, device_number: i32, cycles: u32, reg: u8, data: u8) {
+        self.sid_device.as_mut().unwrap().write(device_number, cycles, reg, data);
     }
 
-    fn write_last_sid_writes(&mut self) {
+    fn rewrite_buffer(&mut self) {
+        self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
+
+        let buffer = self.sid_data_processor.get_buffer_copy();
+
+        for sid_write in buffer.iter().rev() {
+            self.redo_buffer.push_front(SidWrite::new(sid_write.reg, sid_write.data, sid_write.cycles, sid_write.cycles_real));
+        }
+
+        self.sid_data_processor.clear_buffer();
+
+        self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
+    }
+
+    fn reactivate_voices(&mut self) {
+        self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
+
         let number_of_sids = self.acid64_lib.get_number_of_sids(self.c64_instance);
 
         for sid_nr in 0..number_of_sids {
             let sid_base = (sid_nr * 0x20) as u8;
-            self.write_voice_regs(0, sid_base);
-            self.write_voice_regs(1, sid_base);
-            self.write_voice_regs(2, sid_base);
 
-            self.write_filter_and_volume_regs(sid_base);
+            self.reactivate_voice(0, sid_base);
+            self.reactivate_voice(1, sid_base);
+            self.reactivate_voice(2, sid_base);
+
+            self.write_last_sid_write(sid_base + 0x15);
+            self.write_last_sid_write(sid_base + 0x16);
+
+            self.write_last_sid_write(sid_base + 0x17);
+            self.write_last_sid_write(sid_base + 0x18);
         }
     }
 
-    fn write_voice_regs(&mut self, voice_nr: u8, sid_base: u8) {
+    fn reactivate_voice(&mut self, voice_nr: u8, sid_base: u8) {
         let voice_offset = voice_nr * 7;
         let reg_base = sid_base + voice_offset;
 
         self.write_last_sid_write(reg_base + 0x03);
         self.write_last_sid_write(reg_base + 0x02);
-        self.write_last_sid_write(reg_base + 0x01);
-        self.write_last_sid_write(reg_base);
-        self.write_last_sid_write(reg_base + 0x06);
+
         self.write_last_sid_write(reg_base + 0x05);
-        self.write_last_sid_write(reg_base + 0x04);
+        self.write_last_sid_write(reg_base + 0x06);
+
+        let data_ctrl_reg = self.sid_data_processor.get_last_sid_write(reg_base + 0x04);
+
+        if data_ctrl_reg & 0x01 == 0x00 {
+            if !self.sid_data_processor.is_note_finished(reg_base) {
+                self.write_to_sid_direct(self.device_number, MIN_CYCLE_SID_WRITE, reg_base + 0x04, data_ctrl_reg | 0x01);
+                self.write_to_sid_direct(self.device_number, 40000, reg_base + 0x04, data_ctrl_reg);
+            }
+        } else {
+            self.write_to_sid_direct(self.device_number, MIN_CYCLE_SID_WRITE, reg_base + 0x04, data_ctrl_reg);
+        }
+
+        self.write_last_sid_write(reg_base);
+        self.write_last_sid_write(reg_base + 0x01);
     }
 
-    fn write_filter_and_volume_regs(&mut self, sid_base: u8) {
-        self.write_last_sid_write(sid_base + 0x15);
-        self.write_last_sid_write(sid_base + 0x16);
-        self.write_last_sid_write(sid_base + 0x17);
-        self.write_last_sid_write(sid_base + 0x18);
+    fn write_last_sid_write(&mut self, reg: u8) {
+        self.write_to_sid(self.device_number, MIN_CYCLE_SID_WRITE, reg, self.last_sid_write[reg as usize]);
     }
 
     fn adjust_cycles(&mut self, cycles: u32) -> u32 {
@@ -606,12 +817,19 @@ impl Player
             return Err(format!("Song number {} doesn't exist.", song_number + 1));
         }
 
+        self.redo_buffer.clear();
+        self.sid_data_processor.init(0);
+        self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
         self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
         self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
 
         self.song_number = song_number;
 
         self.acid64_lib.set_song_to_play(self.c64_instance, song_number);
+
+        self.acid64_lib.skip_silence(self.c64_instance, true);
+        self.acid64_lib.enable_volume_fix(self.c64_instance, true);
+
         Ok(())
     }
 
@@ -629,6 +847,9 @@ impl Player
             2 => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::Ntsc),
             _ => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::Pal)
         }
+
+        let device_clock = self.sid_device.as_mut().unwrap().get_device_clock(self.device_number);
+        self.sid_data_processor.set_sid_clock(device_clock);
     }
 
     fn get_valid_device_number(&mut self, device_number: i32) -> i32 {

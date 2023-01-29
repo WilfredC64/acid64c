@@ -1,8 +1,8 @@
-// Copyright (C) 2020 Wilfred Bos
+// Copyright (C) 2020 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SidClock {
     Pal = 0,
     Ntsc = 1,
@@ -17,7 +17,7 @@ pub enum SamplingMethod {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DeviceResponse {
     Ok = 0,
     Busy = 1,
@@ -25,10 +25,11 @@ pub enum DeviceResponse {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DeviceId {
     HardsidUsb = 0,
-    NetworkSidDevice = 1
+    NetworkSidDevice = 1,
+    UltimateDevice = 2
 }
 
 pub const DUMMY_REG: u8 = 0x1e;
@@ -93,4 +94,12 @@ pub trait SidDevice {
     fn set_native_device_clock(&mut self, enabled: bool);
 
     fn get_device_clock(&mut self, dev_nr: i32) -> SidClock;
+
+    fn has_remote_sidplayer(&mut self, dev_nr: i32) -> bool;
+
+    fn send_sid(&mut self, dev_nr: i32, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]);
+
+    fn stop_sid(&mut self, dev_nr: i32);
+
+    fn set_cycles_in_fifo(&mut self, dev_nr: i32, cycles: u32);
 }

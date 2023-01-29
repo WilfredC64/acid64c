@@ -1,9 +1,9 @@
-// Copyright (C) 2019 - 2021 Wilfred Bos
+// Copyright (C) 2019 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod clock;
 
-use crate::player::{Player, PlayerCommand, ABORT_NO, ABORT_TO_QUIT, ABORT_FOR_COMMAND, PlayerOutput};
+use crate::player::{Player, PlayerCommand, ABORT_NO, ABORT_TO_QUIT, ABORT_FOR_COMMAND, PlayerOutput, ABORTED};
 use crate::utils::keyboard;
 use self::clock::Clock;
 
@@ -57,21 +57,27 @@ impl ConsolePlayer {
         let mut clock = self.setup_and_display_clock();
         clock.start();
 
+        let remote_sidplayer_active = self.player.lock().has_remote_sidplayer();
         let number_of_tunes = self.player.lock().get_number_of_songs();
-        let mut player_thread = self.start_player();
+        let mut player_thread = self.start_player(&mut clock);
 
         self.paused = false;
         loop {
             if let Some(key) = keyboard::get_char_from_input() {
                 match key {
-                    'p' => {
+                    'p' | 'P' => {
+                        self.disable_fast_forward(&mut clock);
                         self.pause_or_resume_player();
+                        clock.pause(self.paused);
+
                         if !self.paused {
                             let player_output = self.get_player_output();
-                            clock.set_clock(player_output.time as usize);
+                            if remote_sidplayer_active {
+                                clock.set_clock(0);
+                            } else {
+                                clock.set_clock(player_output.time as usize);
+                            }
                         }
-
-                        clock.pause(self.paused);
                     },
                     '0' ..= '9' | '+' | '=' | '-' | '_' => {
                         let mut song_number = keyboard::convert_num_key_to_number(key);
@@ -87,16 +93,20 @@ impl ConsolePlayer {
 
                             self.player.lock().set_song_to_play(song_number)?;
                             self.refresh_info(&mut clock);
-                            player_thread = self.start_player();
+                            player_thread = self.start_player(&mut clock);
                         }
                     },
                     keyboard::RIGHT_KEY => {
-                        self.toggle_fast_forward(&mut clock);
-                        continue;
+                        if !remote_sidplayer_active {
+                            self.toggle_fast_forward(&mut clock);
+                            continue;
+                        }
                     },
                     keyboard::LEFT_KEY => {
-                        self.disable_fast_forward(&mut clock);
-                        continue;
+                        if !remote_sidplayer_active {
+                            self.disable_fast_forward(&mut clock);
+                            continue;
+                        }
                     },
                     keyboard::ESC_KEY => break,
                     _ => ()
@@ -118,10 +128,11 @@ impl ConsolePlayer {
 
         clock.stop();
         self.stop_player(player_thread);
+        self.player.lock().stop_player();
 
         let last_error = self.player.lock().get_last_error();
         if let Some(last_error) = last_error {
-            println!("\n\nERROR: {}\nExiting!", last_error);
+            println!("\n\nERROR: {last_error}\nExiting!");
         }
 
         Ok(())
@@ -133,25 +144,51 @@ impl ConsolePlayer {
 
     fn pause_or_resume_player(&mut self) {
         if self.paused {
-            self.send_command(PlayerCommand::Play);
+            self.play_tune();
         } else {
-            self.send_command(PlayerCommand::Pause);
+            self.pause_tune();
         }
+    }
 
-        self.paused = !self.paused;
+    fn play_tune(&mut self) {
+        self.send_command(PlayerCommand::Play);
+        self.paused = false;
+    }
+
+    fn pause_tune(&mut self) {
+        self.send_command(PlayerCommand::Pause);
+        self.paused = true;
     }
 
     fn enable_fast_forward(&mut self) {
-        self.send_command(PlayerCommand::EnableFastForward);
-        self.fast_forward_in_progress.store(true, Ordering::SeqCst);
+        let ff_in_progress = self.fast_forward_in_progress.load(Ordering::SeqCst);
+        if !ff_in_progress {
+            if !self.is_aborted() {
+                self.send_command(PlayerCommand::EnableFastForward);
+            } else {
+                self.player.lock().enable_fast_forward();
+            }
+            self.fast_forward_in_progress.store(true, Ordering::SeqCst);
+
+            if self.paused {
+                self.play_tune();
+            }
+        }
     }
 
     fn disable_fast_forward(&mut self, clock: &mut Clock) {
-        self.send_command(PlayerCommand::DisableFastForward);
-        self.fast_forward_in_progress.store(false, Ordering::SeqCst);
+        let ff_in_progress = self.fast_forward_in_progress.load(Ordering::SeqCst);
+        if ff_in_progress {
+            if !self.is_aborted() {
+                self.send_command(PlayerCommand::DisableFastForward);
+            } else {
+                self.player.lock().disable_fast_forward();
+            }
+            self.fast_forward_in_progress.store(false, Ordering::SeqCst);
 
-        let player_output = self.get_player_output();
-        clock.set_clock(player_output.time as usize);
+            let player_output = self.get_player_output();
+            clock.set_clock(player_output.time as usize);
+        }
     }
 
     fn toggle_fast_forward(&mut self, clock: &mut Clock) {
@@ -169,10 +206,14 @@ impl ConsolePlayer {
     fn stop_player(&mut self, player_thread: thread::JoinHandle<()>) {
         self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
         let _ = player_thread.join();
-        self.abort_type.store(ABORT_NO, Ordering::SeqCst);
+        self.abort_type.store(ABORTED, Ordering::SeqCst);
     }
 
-    fn start_player(&mut self) -> thread::JoinHandle<()> {
+    fn start_player(&mut self, clock: &mut Clock) -> thread::JoinHandle<()> {
+        self.paused = false;
+
+        self.disable_fast_forward(clock);
+
         self.abort_type.store(ABORT_NO, Ordering::SeqCst);
 
         let player_clone = Arc::clone(&self.player);
@@ -191,7 +232,7 @@ impl ConsolePlayer {
         self.print_info();
         let song_length_in_milli = self.player.lock().get_song_length();
         let clock_display = Self::get_clock_display(song_length_in_milli);
-        print!("{}", clock_display);
+        print!("{clock_display}");
         clock.start();
     }
 
@@ -208,7 +249,7 @@ impl ConsolePlayer {
     fn setup_and_display_clock(&mut self) -> Clock {
         let song_length_in_milli = self.player.lock().get_song_length();
         let clock_display = ConsolePlayer::get_clock_display(song_length_in_milli);
-        print!("{}", clock_display);
+        print!("{clock_display}");
 
         let mut clock = Clock::new();
         clock.set_clock_display_length(clock_display.len() - 1);
@@ -250,7 +291,7 @@ impl ConsolePlayer {
             3 => "MOS 6581/8580",
             _ => "Unknown"
         };
-        println!("SID Model       : {}", sid_model_display);
+        println!("SID Model       : {sid_model_display}");
     }
 
     fn print_c64_model(&mut self) {
@@ -261,7 +302,7 @@ impl ConsolePlayer {
             3 => "PAL/NTSC",
             _ => "Unknown"
         };
-        println!("Clock Frequency : {}", c64_model_display);
+        println!("Clock Frequency : {c64_model_display}");
     }
 
     fn print_sid_description(&mut self) {
@@ -275,9 +316,9 @@ impl ConsolePlayer {
             println!("================================");
             println!("{}", title.trim_end());
         } else {
-            println!("\nTitle           : {}", title);
-            println!("Author          : {}", author);
-            println!("Released        : {}", released);
+            println!("\nTitle           : {title}");
+            println!("Author          : {author}");
+            println!("Released        : {released}");
         }
     }
 

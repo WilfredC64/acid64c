@@ -4,3 +4,4 @@
 pub mod hvsc;
 pub mod keyboard;
 pub mod network;
+pub mod sid_file;

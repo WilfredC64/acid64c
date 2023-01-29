@@ -1,11 +1,12 @@
-// Copyright (C) 2022 Wilfred Bos
+// Copyright (C) 2022 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use std::env;
 
 pub struct Config {
     pub hvsc_location: Option<String>,
-    pub host_name: Option<String>,
+    pub host_name_sid_device: Option<String>,
+    pub host_name_ultimate_device: Option<String>,
     pub display_stil: bool,
     pub display_devices: bool,
     pub adjust_clock: bool,
@@ -17,7 +18,8 @@ pub struct Config {
 impl Config {
     pub fn read() -> Result<Config, String> {
         let mut hvsc_location = None;
-        let mut host_name = None;
+        let mut host_name_sid_device = None;
+        let mut host_name_ultimate_device = None;
         let mut display_stil = false;
         let mut display_devices = false;
         let mut adjust_clock = false;
@@ -29,18 +31,23 @@ impl Config {
             match &argument[1..2] {
                 "c" => adjust_clock = true,
                 "d" => device_numbers = Self::parse_argument_numbers("Device number", &argument[2..])?,
-                "h" => host_name = Some(argument[2..].to_string()),
+                "h" => match &argument[2..3] {
+                    "s" => host_name_sid_device = Some(argument[3..].to_string()),
+                    "u" => host_name_ultimate_device = Some(argument[3..].to_string()),
+                    _ => {}
+                },
                 "i" => display_stil = true,
                 "l" => hvsc_location = Some(argument[2..].to_string()),
                 "p" => display_devices = true,
                 "s" => song_number = Self::parse_argument_number("Song number", &argument[2..])?,
-                _ => return Err(format!("Unknown option: {}", argument))
+                _ => return Err(format!("Unknown option: {argument}"))
             }
         }
 
         Ok(Config {
             hvsc_location,
-            host_name,
+            host_name_sid_device,
+            host_name_ultimate_device,
             display_stil,
             display_devices,
             adjust_clock,
@@ -66,13 +73,13 @@ impl Config {
     fn parse_argument_number(arg_name: &str, arg_value: &str) -> Result<i32, String> {
         let number = match arg_value.parse::<i32>() {
             Ok(i) => i,
-            Err(_e) => return Err(format!("{} must be a valid number and must be higher than 0.", arg_name))
+            Err(_e) => return Err(format!("{arg_name} must be a valid number and must be higher than 0."))
         };
 
         if number >= 1 {
             Ok(number - 1)
         } else {
-            Err(format!("{} must be higher than 0.", arg_name))
+            Err(format!("{arg_name} must be higher than 0."))
         }
     }
 }

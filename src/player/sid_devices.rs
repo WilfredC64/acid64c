@@ -1,12 +1,13 @@
-// Copyright (C) 2020 - 2021 Wilfred Bos
+// Copyright (C) 2020 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
 
-#[cfg(target_os = "windows")]
 use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
 
 use super::network_sid_device::{NetworkSidDevice, NetworkSidDeviceFacade};
+
+use super::ultimate_device::{UltimateDevice, UltimateDeviceFacade};
 
 use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
@@ -133,6 +134,22 @@ impl SidDevice for SidDevicesFacade {
     fn get_device_clock(&mut self, dev_nr: i32) -> SidClock {
         self.devices.get_device_clock(dev_nr)
     }
+
+    fn has_remote_sidplayer(&mut self, dev_nr: i32) -> bool {
+        self.devices.has_remote_sidplayer(dev_nr)
+    }
+
+    fn send_sid(&mut self, dev_nr: i32, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]) {
+        self.devices.send_sid(dev_nr, filename, song_number, sid_data, ssl_data);
+    }
+
+    fn stop_sid(&mut self, dev_nr: i32) {
+        self.devices.stop_sid(dev_nr);
+    }
+
+    fn set_cycles_in_fifo(&mut self, dev_nr: i32, cycles: u32) {
+        self.devices.set_cycles_in_fifo(dev_nr, cycles);
+    }
 }
 
 pub struct SidDevices {
@@ -144,6 +161,7 @@ pub struct SidDevices {
     device_offset: Vec<u8>,
     abort_type: Arc<AtomicI32>,
     use_native_device_clock: bool,
+    errors: Vec<String>
 }
 
 #[allow(dead_code)]
@@ -158,29 +176,51 @@ impl SidDevices {
             device_offset: vec![],
             abort_type,
             use_native_device_clock: true,
+            errors: vec![]
         }
     }
 
-    pub fn connect(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
-        #[cfg(target_os = "windows")]
+    pub fn connect_hardsid_device(mut self) -> Self {
         let hs_connect_result = self.try_connect_hardsid_device();
 
-        let ns_connect_result = self.try_connect_network_device(ip_address, port);
-
-        if self.sid_devices.is_empty() {
-            let mut errors = vec![ns_connect_result.err().unwrap_or_default()];
-
-            #[cfg(target_os = "windows")]
-            errors.push(hs_connect_result.err().unwrap_or_default());
-
-            Err(errors.join(" | "))
+        if let Err(hs_connection_result) = hs_connect_result {
+            self.errors.push(hs_connection_result);
         } else {
             self.set_native_device_clock(self.use_native_device_clock);
-            Ok(())
         }
+        self
     }
 
-    #[cfg(target_os = "windows")]
+    pub fn connect_network_device(mut self, ip_address: &str, port: &str) -> Self {
+        let ns_connect_result = self.try_connect_network_device(ip_address, port);
+
+        if let Err(ns_connect_result) = ns_connect_result {
+            self.errors.push(ns_connect_result);
+        }
+        self
+    }
+
+    pub fn connect_ultimate_device(mut self, ip_address: &str, port: &str) -> Self {
+        let us_connect_result = self.try_connect_ultimate_device(ip_address, port);
+
+        if let Err(us_connect_result) = us_connect_result {
+            self.errors.push(us_connect_result);
+        }
+        self
+    }
+
+    pub fn has_devices(&mut self) -> bool {
+        !self.sid_devices.is_empty()
+    }
+
+    pub fn has_errors(&mut self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    pub fn errors(&mut self) -> String {
+        self.errors.join(" | ")
+    }
+
     fn try_connect_hardsid_device(&mut self) -> Result<(), String> {
         let mut hs_device = HardsidUsbDevice::new(Arc::clone(&self.abort_type));
         let hs_connect_result = hs_device.connect();
@@ -210,6 +250,22 @@ impl SidDevices {
             Ok(())
         } else {
             Err(ns_connect_result.err().unwrap())
+        }
+    }
+
+    fn try_connect_ultimate_device(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
+        let mut us_device = UltimateDevice::new(Arc::clone(&self.abort_type));
+        let us_connect_result = us_device.connect(ip_address, port);
+        if us_connect_result.is_ok() {
+            let sid_count = us_device.get_device_count();
+            let us_facade = UltimateDeviceFacade { us_device };
+            self.sid_devices.push(Box::new(us_facade));
+            self.device_sid_count.push(sid_count as u8);
+
+            self.retrieve_device_info(self.sid_devices.len() - 1);
+            Ok(())
+        } else {
+            Err(us_connect_result.err().unwrap())
         }
     }
 
@@ -470,5 +526,29 @@ impl SidDevices {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
         self.sid_devices[mapped_dev_nr as usize].get_device_clock(mapped_sid_nr as i32)
+    }
+
+    pub fn has_remote_sidplayer(&mut self, dev_nr: i32) -> bool {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].has_remote_sidplayer(mapped_sid_nr as i32)
+    }
+
+    pub fn send_sid(&mut self, dev_nr: i32, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]) {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].send_sid(mapped_sid_nr as i32, filename, song_number, sid_data, ssl_data);
+    }
+
+    pub fn stop_sid(&mut self, dev_nr: i32) {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].stop_sid(mapped_sid_nr as i32);
+    }
+
+    pub fn set_cycles_in_fifo(&mut self, dev_nr: i32, cycles: u32) {
+        let mapped_dev_nr = self.map_device(dev_nr);
+        let mapped_sid_nr = self.map_sid_offset(dev_nr);
+        self.sid_devices[mapped_dev_nr as usize].set_cycles_in_fifo(mapped_sid_nr as i32, cycles);
     }
 }

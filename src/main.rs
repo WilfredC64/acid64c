@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2022 Wilfred Bos
+// Copyright (C) 2019 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod config;
@@ -21,7 +21,7 @@ fn main() {
     match run() {
         Ok(_) => {}
         Err(message) => {
-            eprintln!("ERROR: {}", message);
+            eprintln!("ERROR: {message}");
             exit(1);
         }
     }
@@ -35,8 +35,12 @@ fn run() -> Result<(), String> {
         player.set_adjust_clock(true);
     }
 
-    if let Some(host_name) = config.host_name {
-        player.set_host_name(host_name);
+    if let Some(host_name) = config.host_name_sid_device {
+        player.set_sid_device_host_name(host_name);
+    }
+
+    if let Some(host_name) = config.host_name_ultimate_device {
+        player.set_ultimate_device_host_name(host_name);
     }
 
     player.set_device_numbers(config.device_numbers);
@@ -72,7 +76,8 @@ fn print_usage() {
     println!("\n<Options>");
     println!("  -c: adjust clock for devices that don't support PAL/NTSC clock");
     println!("  -d{{device_number,n}}: set device numbers (1..n) for each SID chip, default is 1");
-    println!("  -h{{host_name}}: host name or ip of network sid device, default is localhost");
+    println!("  -hs{{host_name}}: host name or IP of network sid device, default is localhost");
+    println!("  -hu{{ip_address}}: IP of Ultimate device");
     println!("  -i: display STIL info if present");
     println!("  -l{{hvsc_location}}: specify the HVSC location for song length and STIL info");
     println!("  -p: print available devices");

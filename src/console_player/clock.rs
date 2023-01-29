@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Wilfred Bos
+// Copyright (C) 2019 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use std::io::stdout;
@@ -71,7 +71,7 @@ impl Clock {
             self.previous_count = millis;
 
             let time = Clock::convert_seconds_to_time_string((millis / 1000) as u32, false);
-            print!("{}", time);
+            print!("{time}");
             execute!(stdout(), RestorePosition).unwrap();
         }
     }
@@ -82,9 +82,9 @@ impl Clock {
         let minutes = seconds_total / 60 - hours * 60;
 
         if !display_hours {
-            format!("{:02}:{:02}", minutes, seconds)
+            format!("{minutes:02}:{seconds:02}")
         } else {
-            format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+            format!("{hours:02}:{minutes:02}:{seconds:02}")
         }
     }
 }

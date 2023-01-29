@@ -10,10 +10,11 @@ keywords = ["ACID64 console player", "sidplayer", "c64 music player", "SID 6581"
 build = "build.rs"
 
 [dependencies]
+attohttpc = { version = "0.24", features = ["multipart-form"] }
 chrono = "0.4"
-crossterm = "0.25"
+crossterm = "0.26"
 encoding = "0.2"
-if-addrs = "0.7"
+if-addrs = "0.8"
 libloading = "0.7"
 parking_lot = "0.12"
 timer = "0.2"
