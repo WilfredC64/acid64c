@@ -14,7 +14,7 @@ mod ultimate_device;
 use parking_lot::Mutex;
 use std::fs::File;
 use std::io;
-use std::io::Read;
+use std::io::{Error, ErrorKind, Read};
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::sync::Arc;
 use std::{thread, time};
@@ -385,7 +385,13 @@ impl Player
     }
 
     fn send_sid(&mut self, filename: &str, song_number: i32) {
-        if let Ok(sid_data) = Self::read_file(filename) {
+        let sid_data = if filename.ends_with(".mus") || filename.ends_with(".str") {
+            Self::read_mus_files(filename)
+        } else {
+            Self::read_file(filename)
+        };
+
+        if let Ok(sid_data) = sid_data {
             self.acid64_lib.skip_silence(self.c64_instance, false);
             self.acid64_lib.enable_volume_fix(self.c64_instance, false);
 
@@ -401,6 +407,34 @@ impl Player
             if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
                 self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
             }
+        }
+    }
+
+    fn read_mus_files(filename: &str) -> Result<Vec<u8>, Error> {
+        if filename.ends_with(".mus") {
+            if let Ok(data_mus) = Self::read_file(filename) {
+                let str_filename = filename.strip_suffix(".mus").unwrap().to_string() + ".str";
+                if let Ok(data_str) = Self::read_file(&str_filename) {
+                    Ok([data_mus, data_str].concat())
+                } else {
+                    Ok(data_mus)
+                }
+            } else {
+                Err(Error::new(ErrorKind::Other, "Error loading mus file"))
+            }
+        } else if filename.ends_with(".str") {
+            if let Ok(data_str) = Self::read_file(filename) {
+                let mus_filename = filename.strip_suffix(".str").unwrap().to_string() + ".mus";
+                if let Ok(data_mus) = Self::read_file(&mus_filename) {
+                    Ok([data_mus, data_str].concat())
+                } else {
+                    Err(Error::new(ErrorKind::Other, "Error loading mus file"))
+                }
+            } else {
+                Err(Error::new(ErrorKind::Other, "Error loading str file"))
+            }
+        } else {
+            Self::read_file(filename)
         }
     }
 

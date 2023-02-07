@@ -154,7 +154,7 @@ impl SidDevice for UltimateDeviceFacade {
     }
 
     fn send_sid(&mut self, _dev_nr: i32, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]) {
-        self.us_device.send_sid_file(filename, song_number, sid_data, ssl_data);
+        self.us_device.send_sid(filename, song_number, sid_data, ssl_data);
     }
 
     fn stop_sid(&mut self, _dev_nr: i32) {
@@ -197,10 +197,10 @@ impl UltimateDevice {
             self.server_url = Some(server_url.clone());
         } else {
             self.server_url = None;
-            if ip_address.is_empty() {
-                return Err("No IP address configured for Ultimate device".to_string())
+            return if ip_address.is_empty() {
+                Err("No IP address configured for Ultimate device".to_string())
             } else {
-                return Err("IP is not a local IP address.".to_string());
+                Err("IP is not a local IP address.".to_string())
             }
         }
 
@@ -284,19 +284,24 @@ impl UltimateDevice {
         abort_type != ABORT_NO && abort_type != ABORTING
     }
 
-    pub fn send_sid_file(&mut self, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]) {
+    fn send_sid(&mut self, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]) {
         let filename = Path::new(filename).file_name().unwrap().to_str().unwrap();
 
-        if sid_file::is_sid_file(sid_data) {
-            let filename = filename.split('.').next().unwrap().to_string() + ".sid";
-            let ssl_filename = Self::get_ssl_filename(&filename);
-            let form = MultipartBuilder::new()
-                .with_file(Self::create_part( "ssl", &ssl_filename, ssl_data))
-                .with_file(Self::create_part( "sid", &filename, sid_data))
-                .build().unwrap();
+        if filename.ends_with(".mus") || filename.ends_with(".str") {
+            let mut psid_header = [0; 0x7c];
+            psid_header[0x00] = b'P';
+            psid_header[0x01] = b'S';
+            psid_header[0x02] = b'I';
+            psid_header[0x03] = b'D';
+            psid_header[0x05] = 0x02;
+            psid_header[0x07] = 0x7c;
+            psid_header[0x0f] = 0x01;
+            psid_header[0x11] = 0x01;
+            psid_header[0x77] = 0x29;
 
-            let url = format!("{}{SID_PLAY_ENDPOINT}?{SONG_NR_PARAM}={}", &self.server_url.as_ref().unwrap(), song_number + 1);
-            self.send_file(url, form);
+            self.send_sid_file(filename, song_number, [psid_header.as_slice(), sid_data].concat().as_slice(), ssl_data);
+        } else if sid_file::is_sid_file(sid_data) {
+            self.send_sid_file(filename, song_number, sid_data, ssl_data);
         } else if filename.ends_with(".prg") {
             let form = MultipartBuilder::new()
                 .with_file(Self::create_part( "prg", filename, sid_data))
@@ -307,6 +312,18 @@ impl UltimateDevice {
         } else {
             self.disconnect_with_error("File type not supported".to_string());
         }
+    }
+
+    fn send_sid_file(&mut self, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]) {
+        let filename = filename.split('.').next().unwrap().to_string() + ".sid";
+        let ssl_filename = Self::get_ssl_filename(&filename);
+        let form = MultipartBuilder::new()
+            .with_file(Self::create_part("ssl", &ssl_filename, ssl_data))
+            .with_file(Self::create_part("sid", &filename, sid_data))
+            .build().unwrap();
+
+        let url = format!("{}{SID_PLAY_ENDPOINT}?{SONG_NR_PARAM}={}", &self.server_url.as_ref().unwrap(), song_number + 1);
+        self.send_file(url, form);
     }
 
     pub fn stop_sid(&mut self) {
