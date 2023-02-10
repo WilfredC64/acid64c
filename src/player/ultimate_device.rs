@@ -299,6 +299,16 @@ impl UltimateDevice {
             psid_header[0x11] = 0x01;
             psid_header[0x77] = 0x29;
 
+            let filename_only = filename.split('.').next().unwrap().to_string();
+
+            for (i, char) in filename_only.as_bytes().iter().enumerate() {
+                if *char == b'_' {
+                    psid_header[0x16 + i] = b' ';
+                } else {
+                    psid_header[0x16 + i] = *char;
+                }
+            }
+
             self.send_sid_file(filename, song_number, [psid_header.as_slice(), sid_data].concat().as_slice(), ssl_data);
         } else if sid_file::is_sid_file(sid_data) {
             self.send_sid_file(filename, song_number, sid_data, ssl_data);
