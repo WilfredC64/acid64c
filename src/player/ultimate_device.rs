@@ -1,18 +1,20 @@
 // Copyright (C) 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use std::sync::atomic::{Ordering, AtomicI32};
-use std::{sync::Arc, str, thread, time};
+use std::{str, thread, time};
+use std::net::UdpSocket;
 use std::path::Path;
+use std::time::Instant;
 use attohttpc::{Error, Multipart, MultipartBuilder, MultipartFile, Response};
 
 use crate::utils::{sid_file, network};
 
 use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
-use super::{ABORT_NO, ABORTING};
 
 const TOTAL_TIMEOUT: u64 = 5000;
 const CONNECTION_TIMEOUT: u64 = 500;
+const SOCKET_TIMEOUT: u128 = 100;
+const MAX_DATA_SIZE: usize = 512;
 
 const PAUSE_SID_FILE: &[u8] = include_bytes!("../../resources/acid64_pause.crt");
 const MIN_WAIT_TIME_BUSY_MILLIS: u64 = 20;
@@ -24,6 +26,9 @@ const RUN_PRG_ENDPOINT: &str = "/v1/runners:run_prg";
 const RUN_CRT_ENDPOINT: &str = "/v1/runners:run_crt";
 
 const SONG_NR_PARAM: &str = "songnr";
+
+const MAGIC_ID: &[u8] = b"Any Ultimates around?";
+const PING_RETRY_COUNT: i32 = 5;
 
 pub struct UltimateDeviceFacade {
     pub us_device: UltimateDevice
@@ -171,24 +176,30 @@ pub struct UltimateDevice {
     cycles_in_fifo: u32,
     sid_clock: SidClock,
     last_error: Option<String>,
-    abort_type: Arc<AtomicI32>,
-    server_url: Option<String>
+    server_url: Option<String>,
+    socket: Option<UdpSocket>,
+    socket_url: Option<String>,
+    last_ping: Instant,
+    retry_count: i32
 }
 
 impl UltimateDevice {
-    pub fn new(abort_type: Arc<AtomicI32>) -> UltimateDevice {
+    pub fn new() -> UltimateDevice {
         UltimateDevice {
             device_count: 0,
             cycles_in_fifo: 0,
             sid_clock: SidClock::Pal,
             last_error: None,
-            abort_type,
-            server_url: None
+            server_url: None,
+            socket: None,
+            socket_url: None,
+            last_ping: Instant::now(),
+            retry_count: 0
         }
     }
 
     pub fn connect(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
-        self.disconnect();
+        self.init_to_default();
         self.last_error = None;
 
         let server_url = format!("http://{}", [ip_address, port].join(":"));
@@ -207,10 +218,18 @@ impl UltimateDevice {
         self.test_connection();
 
         if self.is_connected() {
+            self.socket = Some(Self::bind_socket().map_err(|_| format!("Could not connect to: {}.", &ip_address))?);
+            self.socket_url = Some([ip_address, "64"].join(":"));
             Ok(())
         } else {
             Err(format!("Could not connect to: {}.", &server_url))
         }
+    }
+
+    fn bind_socket() -> Result<UdpSocket, Error> {
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+        socket.set_nonblocking(true)?;
+        Ok(socket)
     }
 
     pub fn disconnect(&mut self) {
@@ -220,6 +239,9 @@ impl UltimateDevice {
     fn init_to_default(&mut self) {
         self.device_count = 0;
         self.sid_clock = SidClock::Pal;
+        self.socket = None;
+        self.socket_url = None;
+        self.retry_count = 0;
     }
 
     fn disconnect_with_error(&mut self, error_message: String) {
@@ -238,14 +260,14 @@ impl UltimateDevice {
     pub fn test_connection(&mut self) {
         self.device_count = 0;
         if let Some(server_url) = self.server_url.as_ref() {
-            if !self.is_aborted() {
-                if let Ok(response) = Self::get_version(server_url) {
-                    if response.is_success() {
-                        self.device_count = 1;
-                    } else {
-                        self.disconnect();
-                    }
+            if let Ok(response) = Self::get_version(server_url) {
+                if response.is_success() {
+                    self.device_count = 1;
+                } else {
+                    self.disconnect();
                 }
+            } else {
+                self.disconnect();
             }
         }
     }
@@ -255,6 +277,29 @@ impl UltimateDevice {
             .timeout(time::Duration::from_millis(TOTAL_TIMEOUT))
             .read_timeout(time::Duration::from_millis(TOTAL_TIMEOUT))
             .connect_timeout(time::Duration::from_millis(CONNECTION_TIMEOUT)).send()
+    }
+
+    /// Checks connection status by sending a UDP packet to the device and inspecting response.
+    /// Retries for a predefined number of times if no response received within the timeframe.
+    /// Closes connection if no response is received after retries or on error.
+    fn watchdog(&mut self) {
+        if let Some(socket) = self.socket.as_ref() {
+            if self.last_ping.elapsed().as_millis() > SOCKET_TIMEOUT {
+                if self.retry_count <= PING_RETRY_COUNT && socket.send_to(MAGIC_ID, self.socket_url.as_ref().unwrap()).is_ok() {
+                    self.last_ping = Instant::now();
+                    self.retry_count += 1;
+                    return;
+                }
+                self.disconnect();
+            } else {
+                let mut recv_buff = [0; MAX_DATA_SIZE];
+                if let Ok((size, _)) = socket.recv_from(&mut recv_buff) {
+                    if size >= MAGIC_ID.len() && recv_buff[0..MAGIC_ID.len()].eq(MAGIC_ID) {
+                        self.retry_count = 0;
+                    }
+                }
+            }
+        }
     }
 
     pub fn get_device_count(&self) -> i32 {
@@ -275,13 +320,12 @@ impl UltimateDevice {
 
     fn write(&mut self, _cycles: u32) {
         if self.cycles_in_fifo > MIN_CYCLES_IN_FIFO {
-            thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MILLIS));
-        }
-    }
+            self.watchdog();
 
-    fn is_aborted(&self) -> bool {
-        let abort_type = self.abort_type.load(Ordering::SeqCst);
-        abort_type != ABORT_NO && abort_type != ABORTING
+            if self.is_connected() {
+                thread::sleep(time::Duration::from_millis(MIN_WAIT_TIME_BUSY_MILLIS));
+            }
+        }
     }
 
     fn send_sid(&mut self, filename: &str, song_number: i32, sid_data: &[u8], ssl_data: &[u8]) {

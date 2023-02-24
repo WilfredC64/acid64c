@@ -254,7 +254,7 @@ impl SidDevices {
     }
 
     fn try_connect_ultimate_device(&mut self, ip_address: &str, port: &str) -> Result<(), String> {
-        let mut us_device = UltimateDevice::new(Arc::clone(&self.abort_type));
+        let mut us_device = UltimateDevice::new();
         let us_connect_result = us_device.connect(ip_address, port);
         if us_connect_result.is_ok() {
             let sid_count = us_device.get_device_count();
@@ -331,7 +331,7 @@ impl SidDevices {
     }
 
     pub fn is_connected(&mut self, dev_nr: i32) -> bool {
-        if self.sid_devices.is_empty() {
+        if self.sid_devices.is_empty() || dev_nr >= self.device_mapping_id.len() as i32 {
             return false;
         }
 

@@ -376,9 +376,9 @@ impl Player
 
     pub fn stop_player(&mut self) {
         if self.sid_device.is_some() && self.device_number != -1 && !self.paused && self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
-            self.sid_device.as_mut().unwrap().stop_sid(self.device_number);
-
-            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
+            if self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
+                self.sid_device.as_mut().unwrap().stop_sid(self.device_number);
+            } else {
                 self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
             }
         }
