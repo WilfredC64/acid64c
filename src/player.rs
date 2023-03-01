@@ -12,9 +12,8 @@ mod sid_devices;
 mod ultimate_device;
 
 use parking_lot::Mutex;
-use std::fs::File;
-use std::io;
-use std::io::{Error, ErrorKind, Read};
+use std::fs::read;
+use std::io::{Error, ErrorKind};
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::sync::Arc;
 use std::{thread, time};
@@ -388,7 +387,7 @@ impl Player
         let sid_data = if filename.ends_with(".mus") || filename.ends_with(".str") {
             Self::read_mus_files(filename)
         } else {
-            Self::read_file(filename)
+            read(filename)
         };
 
         if let Ok(sid_data) = sid_data {
@@ -412,9 +411,9 @@ impl Player
 
     fn read_mus_files(filename: &str) -> Result<Vec<u8>, Error> {
         if filename.ends_with(".mus") {
-            if let Ok(data_mus) = Self::read_file(filename) {
+            if let Ok(data_mus) = read(filename) {
                 let str_filename = filename.strip_suffix(".mus").unwrap().to_string() + ".str";
-                if let Ok(data_str) = Self::read_file(&str_filename) {
+                if let Ok(data_str) = read(str_filename) {
                     Ok([data_mus, data_str].concat())
                 } else {
                     Ok(data_mus)
@@ -423,9 +422,9 @@ impl Player
                 Err(Error::new(ErrorKind::Other, "Error loading mus file"))
             }
         } else if filename.ends_with(".str") {
-            if let Ok(data_str) = Self::read_file(filename) {
+            if let Ok(data_str) = read(filename) {
                 let mus_filename = filename.strip_suffix(".str").unwrap().to_string() + ".mus";
-                if let Ok(data_mus) = Self::read_file(&mus_filename) {
+                if let Ok(data_mus) = read(mus_filename) {
                     Ok([data_mus, data_str].concat())
                 } else {
                     Err(Error::new(ErrorKind::Other, "Error loading mus file"))
@@ -434,7 +433,7 @@ impl Player
                 Err(Error::new(ErrorKind::Other, "Error loading str file"))
             }
         } else {
-            Self::read_file(filename)
+            read(filename)
         }
     }
 
@@ -471,12 +470,6 @@ impl Player
             shift += 4;
         }
         result
-    }
-
-    fn read_file(filename: &str) -> io::Result<Vec<u8>> {
-        let mut data = vec![];
-        File::open(filename)?.read_to_end(&mut data)?;
-        Ok(data)
     }
 
     pub fn restart_song(&mut self) -> Result<(), String> {
