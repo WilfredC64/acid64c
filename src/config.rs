@@ -58,28 +58,21 @@ impl Config {
     }
 
     fn parse_argument_numbers(arg_name: &str, arg_values: &str) -> Result<Vec<i32>, String> {
-        let values = arg_values.split(',');
-        let mut numbers = vec![];
-        for value in values {
-            let result = Self::parse_argument_number(arg_name, value);
-            if result.is_err() {
-                return Err(result.err().unwrap());
-            }
-            numbers.push(result.unwrap());
-        }
-        Ok(numbers)
+        arg_values
+            .split(',')
+            .map(|value| Self::parse_argument_number(arg_name, value))
+            .collect()
     }
 
     fn parse_argument_number(arg_name: &str, arg_value: &str) -> Result<i32, String> {
-        let number = match arg_value.parse::<i32>() {
-            Ok(i) => i,
-            Err(_e) => return Err(format!("{arg_name} must be a valid number and must be higher than 0."))
-        };
-
-        if number >= 1 {
-            Ok(number - 1)
-        } else {
-            Err(format!("{arg_name} must be higher than 0."))
-        }
+        arg_value.parse::<i32>()
+            .map_err(|_| format!("{arg_name} must be a valid number and must be higher than 0."))
+            .and_then(|number| {
+                if number >= 1 {
+                    Ok(number - 1)
+                } else {
+                    Err(format!("{arg_name} must be higher than 0."))
+                }
+            })
     }
 }
