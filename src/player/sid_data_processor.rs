@@ -5,9 +5,9 @@ use super::sid_device::SidClock;
 use std::collections::VecDeque;
 use std::time::Instant;
 
-const PAL_CYCLES_PER_SECOND: f64 = 17734475.0 / 18.0;    // = 0985248,611 = ~ 312 * 63 * 50;
-const NTSC_CYCLES_PER_SECOND: f64 = 14318180.0 / 14.0;   // = 1022727,143 = ~ 263 * 65 * 60;
-const ONE_MHZ_CYCLES_PER_SECOND: f64 = 1000000.0;
+const PAL_CYCLES_PER_SECOND: f64 = 17_734_475.0 / 18.0;    // = 0985248,611 = ~ 312 * 63 * 50;
+const NTSC_CYCLES_PER_SECOND: f64 = 14_318_180.0 / 14.0;   // = 1022727,143 = ~ 263 * 65 * 60;
+const ONE_MHZ_CYCLES_PER_SECOND: f64 = 1_000_000.0;
 
 #[derive(Copy, Clone)]
 pub struct SidWrite {
