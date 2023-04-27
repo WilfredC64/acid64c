@@ -129,8 +129,9 @@ impl SidDevice for UltimateDeviceFacade {
         // not supported
     }
 
-    fn write(&mut self, _dev_nr: i32, cycles: u32, _reg: u8, _data: u8) {
+    fn write(&mut self, _dev_nr: i32, cycles: u32, _reg: u8, _data: u8) -> DeviceResponse {
         self.us_device.write(cycles);
+        DeviceResponse::Ok
     }
 
     fn try_write(&mut self, _dev_nr: i32, cycles: u32, _reg: u8, _data: u8) -> DeviceResponse {

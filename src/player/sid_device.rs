@@ -29,7 +29,8 @@ pub enum DeviceResponse {
 pub enum DeviceId {
     HardsidUsb = 0,
     NetworkSidDevice = 1,
-    UltimateDevice = 2
+    UltimateDevice = 2,
+    SidBlaster = 3
 }
 
 pub const DUMMY_REG: u8 = 0x1e;
@@ -83,7 +84,7 @@ pub trait SidDevice {
 
     fn dummy_write(&mut self, dev_nr: i32, cycles: u32);
 
-    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8);
+    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse;
 
     fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse;
 

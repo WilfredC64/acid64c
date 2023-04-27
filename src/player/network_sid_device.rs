@@ -156,8 +156,8 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.dummy_write(0, cycles);
     }
 
-    fn write(&mut self, _dev_nr: i32, cycles: u32, reg: u8, data: u8) {
-        self.ns_device.write(0, cycles, reg, data);
+    fn write(&mut self, _dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.ns_device.write(0, cycles, reg, data)
     }
 
     fn try_write(&mut self, _dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
@@ -524,13 +524,14 @@ impl NetworkSidDevice {
         self.write(dev_nr, cycles, DUMMY_REG, 0);
     }
 
-    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
         let cycles = self.delay(dev_nr, cycles);
         self.add_to_buffer(reg, data, cycles);
 
         if (self.buffer_index >= MAX_SID_WRITES) || (self.buffer_cycles >= WRITE_CYCLES_THRESHOLD) {
             self.force_flush(dev_nr);
         }
+        DeviceResponse::Ok
     }
 
     pub fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {

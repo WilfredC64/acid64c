@@ -119,8 +119,8 @@ impl SidDevice for HardsidUsbDeviceFacade {
         self.hs_device.dummy_write(dev_nr, cycles);
     }
 
-    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
-        self.hs_device.write(dev_nr, cycles, reg, data);
+    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.hs_device.write(dev_nr, cycles, reg, data)
     }
 
     fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
@@ -616,11 +616,12 @@ impl HardsidUsbDevice {
         }
     }
 
-    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
         if self.is_connected() {
             let reg = self.map_device_to_reg(dev_nr, reg);
             self.write_direct(dev_nr, cycles, reg, data);
         }
+        DeviceResponse::Ok
     }
 
     fn map_device_to_reg(&mut self, dev_nr: i32, reg: u8) -> u8 {
@@ -727,12 +728,14 @@ impl HardsidUsbDevice {
         let reg_offset = reg & 0x1f;
 
         if reg_offset < 0x10 {
-            let voice_nr = reg_offset / 7;
-            let base_reg = reg & 0xe0;
-            let reg_offset = reg_offset % 7;
+            let voice_offset = reg_offset % 7;
 
-            match reg_offset {
-                0x00 | 0x01 => self.adjust_frequency_for_voice(voice_nr, base_reg, reg_offset, data),
+            match voice_offset {
+                0x00 | 0x01 => {
+                    let voice_nr = reg_offset / 7;
+                    let base_reg = reg & 0xe0;
+                    self.adjust_frequency_for_voice(voice_nr, base_reg, voice_offset, data)
+                },
                 _ => self.push_write(DeviceCommand::Write, reg, data, 0)
             }
         } else {
@@ -747,10 +750,9 @@ impl HardsidUsbDevice {
             self.clock_adjust.update_frequency(voice_index, reg, data);
             let last_freq = self.clock_adjust.get_last_scaled_freq(voice_index);
             let scaled_freq = self.clock_adjust.scale_frequency(voice_index);
+            let update_hi_freq = last_freq & 0xff00 != scaled_freq & 0xff00;
 
             let voice_base = voice_nr * 7;
-
-            let update_hi_freq = last_freq & 0xff00 != scaled_freq & 0xff00;
 
             if update_hi_freq {
                 self.push_write(DeviceCommand::Write, 1 + voice_base + base_reg, (scaled_freq >> 8) as u8, 0);
