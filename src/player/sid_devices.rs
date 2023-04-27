@@ -7,6 +7,8 @@ use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
 
 use super::network_sid_device::{NetworkSidDevice, NetworkSidDeviceFacade};
 
+use super::sidblaster_usb_device::{SidBlasterUsbDevice, SidBlasterUsbDeviceFacade};
+
 use super::ultimate_device::{UltimateDevice, UltimateDeviceFacade};
 
 use std::sync::atomic::AtomicI32;
@@ -111,8 +113,8 @@ impl SidDevice for SidDevicesFacade {
         self.devices.dummy_write(dev_nr, cycles);
     }
 
-    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
-        self.devices.write(dev_nr, cycles, reg, data);
+    fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
+        self.devices.write(dev_nr, cycles, reg, data)
     }
 
     fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
@@ -191,6 +193,15 @@ impl SidDevices {
         self
     }
 
+    pub fn connect_sidblaster(mut self) -> Self {
+        let sb_connect_result = self.try_connect_sidblaster_device();
+
+        if let Err(sb_connect_result) = sb_connect_result {
+            self.errors.push(sb_connect_result);
+        }
+        self
+    }
+
     pub fn connect_network_device(mut self, ip_address: &str, port: &str) -> Self {
         let ns_connect_result = self.try_connect_network_device(ip_address, port);
 
@@ -234,6 +245,22 @@ impl SidDevices {
             Ok(())
         } else {
             Err(hs_connect_result.err().unwrap())
+        }
+    }
+
+    fn try_connect_sidblaster_device(&mut self) -> Result<(), String> {
+        let mut sb_device = SidBlasterUsbDevice::new(Arc::clone(&self.abort_type));
+        let sb_connect_result = sb_device.connect();
+        if sb_connect_result.is_ok() {
+            let sid_count = sb_device.get_device_count();
+            let sb_facade = SidBlasterUsbDeviceFacade { sb_device };
+            self.sid_devices.push(Box::new(sb_facade));
+            self.device_sid_count.push(sid_count as u8);
+
+            self.retrieve_device_info(self.sid_devices.len() - 1);
+            Ok(())
+        } else {
+            Err(sb_connect_result.err().unwrap())
         }
     }
 
@@ -491,10 +518,10 @@ impl SidDevices {
         self.sid_devices[mapped_dev_nr as usize].dummy_write(mapped_sid_nr as i32, cycles);
     }
 
-    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
+    pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].write(mapped_sid_nr as i32, cycles, reg, data);
+        self.sid_devices[mapped_dev_nr as usize].write(mapped_sid_nr as i32, cycles, reg, data)
     }
 
     fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {

@@ -6,6 +6,8 @@ mod clock_adjust;
 mod hardsid_usb;
 mod hardsid_usb_device;
 mod network_sid_device;
+mod sidblaster_usb_device;
+mod sidblaster_scheduler;
 mod sid_data_processor;
 mod sid_device;
 mod sid_devices;
@@ -19,6 +21,8 @@ use std::sync::Arc;
 use std::{thread, time};
 use std::collections::VecDeque;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use thread_priority::{set_current_thread_priority, ThreadPriority};
+use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
 
 use crate::utils::hvsc;
 use self::acid64_library::Acid64Library;
@@ -126,12 +130,19 @@ impl Drop for Player {
         if self.c64_instance > 0 {
             self.acid64_lib.close_c64_instance(self.c64_instance);
         }
+        unsafe {
+            timeEndPeriod(1);
+        }
     }
 }
 
 impl Player
 {
     pub fn new() -> Player {
+        unsafe {
+            timeBeginPeriod(1);
+        }
+
         let (cmd_sender, cmd_receiver) = sync_channel(0);
 
         let mut player_properties = Player {
@@ -200,6 +211,8 @@ impl Player
     }
 
     pub fn play(&mut self) {
+        let _ = set_current_thread_priority(ThreadPriority::Max);
+
         let cycles_per_second = self.get_cycles_per_second();
 
         let mut idle_count: u32 = 0;
@@ -624,6 +637,7 @@ impl Player
         if self.sid_device.is_none() {
             let mut devices = SidDevices::new(Arc::clone(&self.abort_type))
                 .connect_hardsid_device()
+                .connect_sidblaster()
                 .connect_network_device(&self.host_name_sid_device, &self.port_sid_device)
                 .connect_ultimate_device(&self.host_name_ultimate, &self.port_ultimate);
 
@@ -696,13 +710,15 @@ impl Player
 
         let buffer = self.sid_data_processor.get_buffer_copy();
 
-        for sid_write in buffer.iter().rev() {
-            self.redo_buffer.push_front(SidWrite::new(sid_write.reg, sid_write.data, sid_write.cycles, sid_write.cycles_real));
+        if !buffer.is_empty() {
+            for sid_write in buffer.iter().rev() {
+                self.redo_buffer.push_front(SidWrite::new(sid_write.reg, sid_write.data, sid_write.cycles, sid_write.cycles_real));
+            }
+
+            self.sid_data_processor.clear_buffer();
+
+            self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
         }
-
-        self.sid_data_processor.clear_buffer();
-
-        self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
     }
 
     fn reactivate_voices(&mut self) {

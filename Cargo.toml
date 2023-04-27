@@ -10,14 +10,26 @@ keywords = ["ACID64 console player", "sidplayer", "c64 music player", "SID 6581"
 build = "build.rs"
 
 [dependencies]
-attohttpc = { version = "0.24", features = ["multipart-form"] }
+atomicring = "1.2.9"
+attohttpc = { version = "0.25", features = ["multipart-form"] }
 chrono = "0.4"
 crossterm = "0.26"
 encoding = "0.2"
 if-addrs = "0.10"
-libloading = "0.7"
+libloading = "0.8"
 parking_lot = "0.12"
 timer = "0.2"
+thread-priority = "0.13.1"
+
+[dependencies.libftd2xx]
+version = "0.32.2"
+features = ["static"]
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.48.0", features = [
+    "Win32_Media"
+] }
+
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
