@@ -1,19 +1,19 @@
-// Copyright (C) 2019 - 2021 Wilfred Bos
+// Copyright (C) 2019 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use std::cmp::min;
 use super::sid_device::SidClock;
 use super::MIN_CYCLE_SID_WRITE;
 
-const HS_CLOCK: f64 = 1000000.0;
-const PAL_CLOCK: f64 = 17734475.0 / 18.0;
-const NTSC_CLOCK: f64 = 14318180.0 / 14.0;
+const HS_CLOCK: f64 = 1_000_000.0;
+const PAL_CLOCK: f64 = 17_734_475.0 / 18.0;
+const NTSC_CLOCK: f64 = 14_318_180.0 / 14.0;
 
 const PAL_CLOCK_SCALE: f64 = (HS_CLOCK - PAL_CLOCK) / HS_CLOCK;
 const NTSC_CLOCK_SCALE: f64 = (NTSC_CLOCK - HS_CLOCK) / HS_CLOCK;
 
-const PAL_FREQ_SCALE: u32 = ((HS_CLOCK - PAL_CLOCK) * 65536.0 / PAL_CLOCK) as u32;
-const NTSC_FREQ_SCALE: u32 = ((NTSC_CLOCK - HS_CLOCK) * 65536.0 / NTSC_CLOCK) as u32;
+const PAL_FREQ_SCALE: u32 = (((PAL_CLOCK - HS_CLOCK) * 65_536.0 / PAL_CLOCK) + 65_536.0) as u32;
+const NTSC_FREQ_SCALE: u32 = (((NTSC_CLOCK - HS_CLOCK) * 65_536.0 / NTSC_CLOCK) + 65_536.0) as u32;
 
 pub struct ClockAdjust {
     total_cycles_to_stretch: f64,
@@ -75,11 +75,10 @@ impl ClockAdjust {
 
     pub fn scale_frequency(&mut self, voice_index: u8) -> u32 {
         let freq = self.freq[voice_index as usize];
-        let scaled_freq = if self.clock == SidClock::Ntsc {
-            let freq = freq + ((freq * NTSC_FREQ_SCALE) >> 16);
-            min(freq, 0xffff)
-        } else {
-            freq - ((freq * PAL_FREQ_SCALE) >> 16)
+
+        let scaled_freq = match self.clock {
+            SidClock::Ntsc => min((freq * NTSC_FREQ_SCALE) >> 16, 0xffff),
+            _ => (freq * PAL_FREQ_SCALE) >> 16
         };
 
         self.last_freq[voice_index as usize] = scaled_freq;
@@ -87,12 +86,10 @@ impl ClockAdjust {
     }
 
     pub fn update_frequency(&mut self, voice_index: u8, reg: u8, data: u8) {
-        let freq = self.freq[voice_index as usize];
-        let freq = if reg == 0 {
-            (freq & 0xff00) + data as u32
-        } else {
-            (freq & 0x00ff) + ((data as u32) << 8)
+        let freq = &mut self.freq[voice_index as usize];
+        *freq = match reg {
+            0 => (*freq & 0xff00) | data as u32,
+            _ => (*freq & 0x00ff) | ((data as u32) << 8),
         };
-        self.freq[voice_index as usize] = freq;
     }
 }
