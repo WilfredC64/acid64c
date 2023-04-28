@@ -57,7 +57,6 @@ pub struct SidBlasterScheduler {
 
 impl Drop for SidBlasterScheduler {
     fn drop(&mut self) {
-        self.aborted.store(true, Ordering::SeqCst);
         self.stop_sid_writer_thread();
     }
 }
@@ -80,6 +79,8 @@ impl SidBlasterScheduler {
     }
 
     fn stop_sid_writer_thread(&mut self) {
+        self.aborted.store(true, Ordering::SeqCst);
+
         if self.sid_writer_thread.is_some() {
             let _ = self.sid_writer_thread.take().unwrap().join().ok();
         }
@@ -88,7 +89,12 @@ impl SidBlasterScheduler {
     pub fn start(&mut self) -> Result<(), String> {
         self.stop_sid_writer_thread();
 
+        self.aborted.store(false, Ordering::SeqCst);
+
         let mut sid_devices = sidblaster::get_devices()?;
+        if sid_devices.is_empty() {
+            return Err(sidblaster::ERROR_MSG_NO_SIDBLASTER_FOUND.to_string());
+        }
 
         let queue = self.queue.clone();
         let cycles_in_buffer = self.cycles_in_buffer.clone();
@@ -136,40 +142,32 @@ impl SidBlasterScheduler {
                         last_write = None;
                         cycles_processed = 0;
                         queue_started.store(false, Ordering::SeqCst);
-
-                        sidblaster::silent_sids(&mut sid_devices);
                         continue;
                     }
 
                     let cycles_per_micro = match SidClock::from_u8(sid_write.clock) {
-                        SidClock::Pal => {
-                            PAL_CYCLES_PER_MICRO
-                        },
-                        SidClock::Ntsc => {
-                            NTSC_CYCLES_PER_MICRO
-                        },
-                        SidClock::OneMhz => {
-                            ONE_MHZ_CYCLES_PER_MICRO
-                        }
+                        SidClock::Pal => PAL_CYCLES_PER_MICRO,
+                        SidClock::Ntsc => NTSC_CYCLES_PER_MICRO,
+                        SidClock::OneMhz => ONE_MHZ_CYCLES_PER_MICRO
                     };
 
                     let cycles = sid_write.cycles;
                     let reg = sid_write.reg;
-                    let data = sid_write.data;
 
                     let dev_nr = reg >> 5;
+                    let device_change = !buffer.is_empty() && dev_nr != last_dev_nr;
 
                     cycles_processed += cycles;
                     cycles_in_temp_buffer += cycles;
 
                     buffer.push(reg & 0x1f | 0xe0);
-                    buffer.push(data);
+                    buffer.push(sid_write.data);
 
                     sid_write_usage[reg as usize] = true;
 
                     next_write = queue.try_pop();
 
-                    let mut should_flush = last_dev_nr != dev_nr;
+                    let mut should_flush = device_change;
                     if let Some(next) = &next_write {
                         if next.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES || next.reg >> 5 != dev_nr || (sid_write_usage[next.reg as usize] && next.cycles > ALLOW_DOUBLE_REG_WRITES_WITHIN_CYCLES) {
                             should_flush |= true;

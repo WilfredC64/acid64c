@@ -160,7 +160,6 @@ impl SidDevice for HardsidUsbDeviceFacade {
     }
 }
 
-#[allow(dead_code)]
 pub enum DeviceCommand {
     Write = 0,
     Delay = 1
@@ -206,7 +205,6 @@ pub struct HardsidUsbDevice {
     prev_uplay_dev_nr: i32
 }
 
-#[allow(dead_code)]
 impl HardsidUsbDevice {
     pub fn new(abort_type: Arc<AtomicI32>) -> HardsidUsbDevice {
         HardsidUsbDevice {

@@ -6,7 +6,6 @@ use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, Dev
 use super::sidblaster_scheduler::{SidBlasterScheduler, SID_WRITES_BUFFER_SIZE};
 use super::{ABORT_NO, MIN_CYCLE_SID_WRITE};
 
-use std::collections::VecDeque;
 use std::sync::atomic::{Ordering, AtomicI32, AtomicU32, AtomicBool};
 use std::sync::Arc;
 use std::thread;
@@ -18,7 +17,6 @@ use crate::utils::sidblaster;
 
 const DUMMY_REG: u8 = 0x1e;
 const ERROR_MSG_DEVICE_FAILURE: &str = "Failure occurred during interaction with device.";
-const ERROR_MSG_NO_SIDBLASTER_FOUND: &str = "No SIDBlaster USB device found.";
 const SB_MIN_CYCLE_SID_WRITE: u32 = 4;
 const ALLOWED_CYCLES_TO_BE_IN_BUFFER: u32 = 20_000;
 
@@ -164,19 +162,12 @@ impl SidDevice for SidBlasterUsbDeviceFacade {
 
 pub struct SidBlasterUsbDevice {
     device_names: Vec<String>,
-    device_count: i32,
     sid_count: i32,
     number_of_sids: i32,
     sid_clock: SidClock,
     turbo_mode: bool,
-    device_type: Vec<u8>,
-    device_id: Vec<u8>,
-    device_base_reg: Vec<u8>,
-    device_index: Vec<u8>,
     abort_type: Arc<AtomicI32>,
     last_error: Option<String>,
-    device_mappings: Vec<i32>,
-    sid_write_fifo: VecDeque<SidWrite>,
     use_native_device_clock: bool,
     clock_adjust: ClockAdjust,
     cycles_to_compensate: u32,
@@ -190,7 +181,6 @@ pub struct SidBlasterUsbDevice {
     aborted: Arc<AtomicBool>
 }
 
-#[allow(dead_code)]
 impl SidBlasterUsbDevice {
     pub fn new(abort_type: Arc<AtomicI32>) -> SidBlasterUsbDevice {
         let cycles_in_buffer = Arc::new(AtomicU32::new(0));
@@ -207,19 +197,12 @@ impl SidBlasterUsbDevice {
 
         SidBlasterUsbDevice {
             device_names: vec![],
-            device_count: 0,
             sid_count: 0,
             number_of_sids: 0,
             sid_clock: SidClock::Pal,
             turbo_mode: false,
-            device_type: vec![],
-            device_id: vec![],
-            device_base_reg: vec![],
-            device_index: vec![],
             abort_type,
             last_error: None,
-            device_mappings: vec![],
-            sid_write_fifo: VecDeque::new(),
             use_native_device_clock: true,
             clock_adjust: ClockAdjust::new(),
             cycles_to_compensate: 0,
@@ -246,7 +229,7 @@ impl SidBlasterUsbDevice {
         if self.sid_count > 0 {
             self.sid_blaster_scheduler.start()
         } else {
-            Err(ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())
+            Err(sidblaster::ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())
         }
     }
 
@@ -258,16 +241,9 @@ impl SidBlasterUsbDevice {
     }
 
     fn init_device_settings(&mut self) {
-        self.device_count = 0;
         self.sid_count = 0;
         self.number_of_sids = 0;
         self.sid_clock = SidClock::Pal;
-
-        self.device_type = vec![];
-        self.device_id = vec![];
-        self.device_base_reg = vec![];
-        self.device_index = vec![];
-        self.device_mappings = vec![];
 
         self.queue.clear();
         self.cycles_in_buffer.store(0, Ordering::SeqCst);
@@ -276,7 +252,6 @@ impl SidBlasterUsbDevice {
     }
 
     fn init_write_state(&mut self) {
-        self.sid_write_fifo.clear();
         self.cycles_to_compensate = 0;
         self.clock_adjust.init(self.sid_clock);
     }
@@ -294,7 +269,12 @@ impl SidBlasterUsbDevice {
         !self.device_names.is_empty()
     }
 
-    pub fn test_connection(&mut self, _dev_nr: i32) {
+    pub fn test_connection(&mut self, dev_nr: i32) {
+        if self.is_connected() && self.is_aborted() {
+            self.disconnect_with_error(ERROR_MSG_DEVICE_FAILURE.to_string());
+        } else {
+            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, DUMMY_REG, 0);
+        }
     }
 
     pub fn can_pair_devices(&mut self, dev1: i32, dev2: i32) -> bool {
@@ -319,6 +299,8 @@ impl SidBlasterUsbDevice {
             clock: self.get_device_clock() as u8,
             stop_draining: true
         });
+
+        self.init_write_state();
     }
 
     pub fn set_sid_model(&mut self, _dev_nr: i32, _sid_socket: i32) {
@@ -334,6 +316,10 @@ impl SidBlasterUsbDevice {
             if self.cycles_in_buffer.load(Ordering::SeqCst) > ALLOWED_CYCLES_TO_BE_IN_BUFFER {
                 self.queue.clear();
                 self.cycles_in_buffer.store(0, Ordering::SeqCst);
+            }
+
+            for i in 0..self.sid_count {
+                self.silent_sid(i, 0);
             }
 
             let _ = self.queue.try_push(SidWrite {
@@ -368,6 +354,8 @@ impl SidBlasterUsbDevice {
             self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x14, 0);
 
             self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x18, 0);
+
+            self.init_write_state();
         }
     }
 
@@ -423,6 +411,8 @@ impl SidBlasterUsbDevice {
             self.reset_sid_register(dev_nr, base_reg + 0x16);
             self.reset_sid_register(dev_nr, base_reg + 0x17);
             self.reset_sid_register(dev_nr, base_reg + 0x19);
+
+            self.init_write_state();
         }
     }
 
@@ -587,7 +577,16 @@ impl SidBlasterUsbDevice {
     }
 
     fn write_direct(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) {
-        self.write(dev_nr, cycles, reg, data);
+        let reg = self.filter_reg_for_unsupported_writes(reg);
+        let dev_nr = (dev_nr + ((reg & 0xe0) >> 5) as i32) % self.sid_count;
+
+        if self.is_connected() {
+            self.write_to_queue(dev_nr, cycles, reg, data);
+        }
+
+        if self.is_aborted() {
+            self.disconnect_with_error(ERROR_MSG_DEVICE_FAILURE.to_string());
+        }
     }
 
     pub fn retry_write(&mut self, dev_nr: i32) -> DeviceResponse {

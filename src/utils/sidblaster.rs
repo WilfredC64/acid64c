@@ -7,7 +7,8 @@ use libftd2xx::{BitsPerWord, Ftdi, FtdiCommon, FtStatus, list_devices, Parity, S
 const BAUD_RATE: u32 = 500_000;
 const LATENCY_IN_MILLIS: u64 = 2;
 const TIME_OUT_IN_MILLIS: u64 = 1000;
-const ERROR_MSG_NO_SIDBLASTER_FOUND: &str = "No SIDBlaster USB device found.";
+const ERROR_MSG_DEVICE_FAILURE: &str = "Failed to communicate with FTDI device.";
+pub const ERROR_MSG_NO_SIDBLASTER_FOUND: &str = "No SIDBlaster USB device found.";
 
 pub fn detect_devices() -> Result<Vec<String>, String> {
     let serials = get_serials()?;
@@ -16,8 +17,8 @@ pub fn detect_devices() -> Result<Vec<String>, String> {
 
 pub fn get_devices() -> Result<Vec<Ftdi>, String> {
     get_serials()?.iter().map(|serial| {
-        let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())?;
-        configure_device(&mut usb_device).map_err(|_| ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())?;
+        let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
+        configure_device(&mut usb_device).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         Ok(usb_device)
     }).collect::<Result<Vec<_>, _>>()
 }
@@ -33,7 +34,7 @@ pub fn write(sid_device: &mut Ftdi, data: &[u8]) -> Result<usize, FtStatus> {
 }
 
 fn get_serials() -> Result<Vec<String>, String> {
-    let devices = list_devices().map_err(|_| ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())?;
+    let devices = list_devices().map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
     let serials = devices.iter()
         .filter(|device| device.vendor_id == 0x0403 && device.description.starts_with("SIDBlaster/USB"))
         .map(|device| device.serial_number.clone())
@@ -43,8 +44,8 @@ fn get_serials() -> Result<Vec<String>, String> {
 
 fn get_device_names(serials: &[String]) -> Result<Vec<String>, String> {
     serials.iter().map(|serial| {
-        let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())?;
-        let device_info = usb_device.device_info().map_err(|_| ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())?;
+        let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
+        let device_info = usb_device.device_info().map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         Ok(device_info.description.replace("/USB", "").replace('/', " ").trim().to_string())
     }).collect()
 }
