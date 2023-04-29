@@ -138,13 +138,6 @@ impl SidBlasterScheduler {
                 };
 
                 if let Some(sid_write) = &sid_write {
-                    if sid_write.stop_draining {
-                        last_write = None;
-                        cycles_processed = 0;
-                        queue_started.store(false, Ordering::SeqCst);
-                        continue;
-                    }
-
                     let cycles_per_micro = match SidClock::from_u8(sid_write.clock) {
                         SidClock::Pal => PAL_CYCLES_PER_MICRO,
                         SidClock::Ntsc => NTSC_CYCLES_PER_MICRO,
@@ -156,27 +149,28 @@ impl SidBlasterScheduler {
 
                     let dev_nr = reg >> 5;
                     let device_change = !buffer.is_empty() && dev_nr != last_dev_nr;
+                    last_dev_nr = dev_nr;
 
                     cycles_processed += cycles;
                     cycles_in_temp_buffer += cycles;
 
-                    buffer.push(reg & 0x1f | 0xe0);
-                    buffer.push(sid_write.data);
+                    if !sid_write.stop_draining {
+                        buffer.push(reg & 0x1f | 0xe0);
+                        buffer.push(sid_write.data);
+                    }
 
                     sid_write_usage[reg as usize] = true;
 
                     next_write = queue.try_pop();
 
-                    let mut should_flush = device_change;
+                    let mut should_flush = device_change || sid_write.stop_draining;
                     if let Some(next) = &next_write {
                         if next.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES || next.reg >> 5 != dev_nr || (sid_write_usage[next.reg as usize] && next.cycles > ALLOW_DOUBLE_REG_WRITES_WITHIN_CYCLES) {
                             should_flush |= true;
                         }
                     }
 
-                    last_dev_nr = dev_nr;
-
-                    if should_flush || buffer.len() > MAX_DEVICE_BUFFER_SIZE || cycles_in_temp_buffer > MAX_DEVICE_BUFFER_CYCLES || sid_write.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES {
+                    if !buffer.is_empty() && (should_flush || buffer.len() > MAX_DEVICE_BUFFER_SIZE || cycles_in_temp_buffer > MAX_DEVICE_BUFFER_CYCLES || sid_write.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES) {
                         Self::wait(cycles_processed, &mut last_write, cycles_per_micro);
 
                         if sidblaster::write(&mut sid_devices[dev_nr as usize], &buffer).is_err() {
@@ -193,6 +187,12 @@ impl SidBlasterScheduler {
                         cycles_in_buffer.fetch_sub(cycles, Ordering::SeqCst);
                     } else {
                         cycles_in_buffer.store(0, Ordering::SeqCst);
+                    }
+
+                    if sid_write.stop_draining {
+                        last_write = None;
+                        cycles_processed = 0;
+                        queue_started.store(false, Ordering::SeqCst);
                     }
                 } else {
                     last_write = None;
