@@ -2,18 +2,14 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
-
 use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
-
 use super::network_sid_device::{NetworkSidDevice, NetworkSidDeviceFacade};
-
 use super::sidblaster_usb_device::{SidBlasterUsbDevice, SidBlasterUsbDeviceFacade};
-
 use super::ultimate_device::{UltimateDevice, UltimateDeviceFacade};
+use super::sid_device::SidModel;
 
 use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
-use crate::player::sid_device::SidModel;
 
 pub struct SidDevicesFacade {
     pub devices: SidDevices
@@ -199,6 +195,8 @@ impl SidDevices {
 
         if let Err(sb_connect_result) = sb_connect_result {
             self.errors.push(sb_connect_result);
+        } else {
+            self.set_native_device_clock(self.use_native_device_clock);
         }
         self
     }
