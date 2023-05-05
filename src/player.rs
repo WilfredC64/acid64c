@@ -1,6 +1,8 @@
 // Copyright (C) 2019 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
+pub mod sid_device;
+
 mod acid64_library;
 mod clock_adjust;
 mod hardsid_usb;
@@ -9,7 +11,6 @@ mod network_sid_device;
 mod sidblaster_usb_device;
 mod sidblaster_scheduler;
 mod sid_data_processor;
-mod sid_device;
 mod sid_devices;
 mod ultimate_device;
 
@@ -27,7 +28,7 @@ use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
 use crate::utils::hvsc;
 use self::acid64_library::Acid64Library;
 use self::sid_data_processor::{SidDataProcessor, SidWrite};
-use self::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DUMMY_REG};
+use self::sid_device::{DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
 use self::sid_devices::{SidDevices, SidDevicesFacade};
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
@@ -879,7 +880,11 @@ impl Player
     pub fn configure_sid_model(&mut self, number_of_sids: i32) {
         for i in 0..number_of_sids {
             let device_number = self.device_numbers.get(i as usize).unwrap_or(&0);
-            self.sid_device.as_mut().unwrap().set_sid_model(*device_number, i);
+            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance, i);
+            match sid_model {
+                2 => self.sid_device.as_mut().unwrap().set_sid_model(*device_number, i, SidModel::Mos8580),
+                _ => self.sid_device.as_mut().unwrap().set_sid_model(*device_number, i, SidModel::Mos6581)
+            }
         }
     }
 

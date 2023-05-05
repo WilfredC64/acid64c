@@ -7,7 +7,7 @@ use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
 
 use crate::utils::network;
-use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId, DUMMY_REG};
+use super::sid_device::{DeviceId, DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 
 const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
@@ -100,7 +100,7 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.set_sid_position(sid_position);
     }
 
-    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
+    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32, _sid_model: SidModel) {
         self.ns_device.set_sid_model(dev_nr, sid_socket);
     }
 

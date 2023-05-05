@@ -171,7 +171,11 @@ impl SidBlasterScheduler {
                     }
 
                     if !buffer.is_empty() && (should_flush || buffer.len() > MAX_DEVICE_BUFFER_SIZE || cycles_in_temp_buffer > MAX_DEVICE_BUFFER_CYCLES || sid_write.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES) {
-                        Self::wait(cycles_processed, &mut last_write, cycles_per_micro);
+                        if last_write.is_none() {
+                            last_write = Some(Instant::now());
+                        }
+
+                        Self::wait(cycles_processed, &last_write.unwrap(), cycles_per_micro);
 
                         if sidblaster::write(&mut sid_devices[dev_nr as usize], &buffer).is_err() {
                             aborted.store(true, Ordering::SeqCst);
@@ -205,21 +209,16 @@ impl SidBlasterScheduler {
         Ok(())
     }
 
-    fn wait(cycles: u32, last_write: &mut Option<Instant>, cycles_per_micro: f64) {
-        if last_write.is_none() {
-            *last_write = Some(Instant::now());
-        } else {
-            let next_time_in_micros = (cycles as f64 / cycles_per_micro) as u128;
-            let current_time = last_write.unwrap();
-            let elapsed = current_time.elapsed().as_micros();
+    fn wait(cycles: u32, start_time: &Instant, cycles_per_micro: f64) {
+        let next_time_in_micros = (cycles as f64 / cycles_per_micro) as u128;
+        let elapsed = start_time.elapsed().as_micros();
 
-            if elapsed < next_time_in_micros {
-                let time_to_wait = next_time_in_micros - elapsed;
-                if time_to_wait > THRESHOLD_TO_SLEEP_THREAD_IN_MICROS {
-                    thread::sleep(Duration::from_millis(time_to_wait as u64 / 1000 - 1));
-                }
-                while current_time.elapsed().as_micros() < next_time_in_micros {}
+        if elapsed < next_time_in_micros {
+            let time_to_wait = next_time_in_micros - elapsed;
+            if time_to_wait > THRESHOLD_TO_SLEEP_THREAD_IN_MICROS {
+                thread::sleep(Duration::from_millis(time_to_wait as u64 / 1000 - 1));
             }
+            while start_time.elapsed().as_micros() < next_time_in_micros {}
         }
     }
 

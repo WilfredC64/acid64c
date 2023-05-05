@@ -2,18 +2,17 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use super::clock_adjust::ClockAdjust;
-use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
-use super::sidblaster_scheduler::{SidBlasterScheduler, SID_WRITES_BUFFER_SIZE};
+use super::sid_device::{DeviceId, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
+use super::sidblaster_scheduler::{SidBlasterScheduler, SidWrite, SID_WRITES_BUFFER_SIZE, MAX_CYCLES_IN_BUFFER};
 use super::{ABORT_NO, MIN_CYCLE_SID_WRITE};
+use crate::player::ABORTED;
+use crate::utils::{armsid, armsid::SidFilter, fpgasid, sidblaster};
 
 use std::sync::atomic::{Ordering, AtomicI32, AtomicU32, AtomicBool};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use atomicring::AtomicRingBuffer;
-use crate::player::ABORTED;
-use crate::player::sidblaster_scheduler::{MAX_CYCLES_IN_BUFFER, SidWrite};
-use crate::utils::sidblaster;
 
 const DUMMY_REG: u8 = 0x1e;
 const ERROR_MSG_DEVICE_FAILURE: &str = "Failure occurred during interaction with device.";
@@ -63,8 +62,8 @@ impl SidDevice for SidBlasterUsbDeviceFacade {
         // not supported
     }
 
-    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
-        self.sb_device.set_sid_model(dev_nr, sid_socket);
+    fn set_sid_model(&mut self, dev_nr: i32, _sid_socket: i32, sid_model: SidModel) {
+        self.sb_device.set_sid_model(dev_nr, sid_model);
     }
 
     fn set_sid_clock(&mut self, _dev_nr: i32, sid_clock: SidClock) {
@@ -291,19 +290,55 @@ impl SidBlasterUsbDevice {
 
     pub fn set_sid_count(&mut self, sid_count: i32) {
         self.number_of_sids = sid_count;
-
-        let _ = self.queue.try_push(SidWrite {
-            reg: 0,
-            data: 0,
-            cycles: 0,
-            clock: self.get_device_clock() as u8,
-            stop_draining: true
-        });
-
         self.init_write_state();
     }
 
-    pub fn set_sid_model(&mut self, _dev_nr: i32, _sid_socket: i32) {
+    pub fn set_sid_model(&mut self, dev_nr: i32, sid_model: SidModel) {
+        if self.number_of_sids > 0 && self.is_connected() {
+            self.wait_until_queue_is_processed();
+
+            let sid_filter = SidFilter {
+                filter_strength_6581: 1,
+                filter_lowest_freq_6581: 3,
+                filter_central_freq_8580: 3,
+                filter_lowest_freq_8580: 0
+            };
+
+            self.configure_sid_replacement(dev_nr, &sid_model, &sid_filter);
+
+            self.wait_until_queue_is_processed();
+
+            let _ = self.queue.try_push(SidWrite {
+                reg: 0,
+                data: 0,
+                cycles: 0,
+                clock: self.get_device_clock() as u8,
+                stop_draining: true
+            });
+        }
+    }
+
+    fn configure_sid_replacement(&mut self, dev_nr: i32, sid_model: &SidModel, sid_filter: &SidFilter) {
+        let sid_writes = armsid::configure_armsid(sid_model, sid_filter);
+        for sid_write in sid_writes {
+            self.write_direct(dev_nr, sid_write.cycles, sid_write.reg, sid_write.data);
+        }
+
+        let sid_writes = fpgasid::configure_fpgasid(sid_model);
+        for sid_write in sid_writes {
+            self.write_direct(dev_nr, sid_write.cycles, sid_write.reg, sid_write.data);
+        }
+    }
+
+    fn wait_until_queue_is_processed(&mut self) {
+        loop {
+            if self.queue.len() == 0 {
+                break;
+            }
+            self.start_draining();
+
+            thread::yield_now();
+        }
     }
 
     pub fn set_sid_clock(&mut self, sid_clock: SidClock) {

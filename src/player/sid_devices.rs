@@ -13,6 +13,7 @@ use super::ultimate_device::{UltimateDevice, UltimateDeviceFacade};
 
 use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
+use crate::player::sid_device::SidModel;
 
 pub struct SidDevicesFacade {
     pub devices: SidDevices
@@ -57,8 +58,8 @@ impl SidDevice for SidDevicesFacade {
         self.devices.set_sid_position(dev_nr, sid_position);
     }
 
-    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
-        self.devices.set_sid_model(dev_nr, sid_socket);
+    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32, sid_model: SidModel) {
+        self.devices.set_sid_model(dev_nr, sid_socket, sid_model);
     }
 
     fn set_sid_clock(&mut self, dev_nr: i32, sid_clock: SidClock) {
@@ -434,10 +435,10 @@ impl SidDevices {
         self.sid_devices[mapped_dev_nr as usize].set_sid_position(mapped_sid_nr as i32, sid_position);
     }
 
-    pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
+    pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32, sid_model: SidModel) {
         let mapped_dev_nr = self.map_device(dev_nr);
         let mapped_sid_nr = self.map_sid_offset(dev_nr);
-        self.sid_devices[mapped_dev_nr as usize].set_sid_model(mapped_sid_nr as i32, sid_socket);
+        self.sid_devices[mapped_dev_nr as usize].set_sid_model(mapped_sid_nr as i32, sid_socket, sid_model);
     }
 
     pub fn set_sid_clock(&mut self, dev_nr: i32, sid_clock: SidClock) {

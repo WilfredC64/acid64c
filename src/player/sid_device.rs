@@ -1,12 +1,16 @@
 // Copyright (C) 2020 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-#[allow(dead_code)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SidClock {
     Pal = 0,
     Ntsc = 1,
     OneMhz = 2
+}
+
+pub enum SidModel {
+    Mos6581 = 0,
+    Mos8580 = 1
 }
 
 #[allow(dead_code)]
@@ -16,7 +20,6 @@ pub enum SamplingMethod {
     Fast = 1
 }
 
-#[allow(dead_code)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DeviceResponse {
     Ok = 0,
@@ -24,7 +27,6 @@ pub enum DeviceResponse {
     Error = 2
 }
 
-#[allow(dead_code)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DeviceId {
     HardsidUsb = 0,
@@ -56,7 +58,7 @@ pub trait SidDevice {
 
     fn set_sid_position(&mut self, dev_nr: i32, sid_position: i8);
 
-    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32);
+    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32, sid_model: SidModel);
 
     fn set_sid_clock(&mut self, dev_nr: i32, sid_clock: SidClock);
 

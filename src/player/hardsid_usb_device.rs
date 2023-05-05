@@ -3,8 +3,9 @@
 
 use super::clock_adjust::ClockAdjust;
 use super::hardsid_usb::{HardSidUsb, HSID_USB_STATE_OK, HSID_USB_STATE_ERROR, HSID_USB_STATE_BUSY, DEV_TYPE_HS_4U, DEV_TYPE_HS_UPLAY, DEV_TYPE_HS_UNO};
-use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
+use super::sid_device::{DeviceId, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
+use crate::utils::{armsid, armsid::SidFilter, fpgasid};
 
 use std::collections::VecDeque;
 use std::sync::atomic::{Ordering, AtomicI32};
@@ -63,8 +64,8 @@ impl SidDevice for HardsidUsbDeviceFacade {
         // not supported
     }
 
-    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
-        self.hs_device.set_sid_model(dev_nr, sid_socket);
+    fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32, sid_model: SidModel) {
+        self.hs_device.set_sid_model(dev_nr, sid_socket, sid_model);
     }
 
     fn set_sid_clock(&mut self, _dev_nr: i32, sid_clock: SidClock) {
@@ -197,6 +198,7 @@ pub struct HardsidUsbDevice {
     abort_type: Arc<AtomicI32>,
     last_error: Option<String>,
     device_mappings: Vec<i32>,
+    device_model: Vec<SidModel>,
     sid_write_fifo: VecDeque<SidWrite>,
     use_native_device_clock: bool,
     clock_adjust: ClockAdjust,
@@ -221,6 +223,7 @@ impl HardsidUsbDevice {
             abort_type,
             last_error: None,
             device_mappings: vec![],
+            device_model: vec![],
             sid_write_fifo: VecDeque::new(),
             use_native_device_clock: true,
             clock_adjust: ClockAdjust::new(),
@@ -262,6 +265,7 @@ impl HardsidUsbDevice {
                         self.device_index.push(dev_type_count[dev_type as usize]);
                         self.device_base_reg.push(j * 0x20);
                         self.device_mappings.push(j as i32);
+                        self.device_model.push(SidModel::Mos6581);
                         self.device_init_done.push(false);
                         dev_type_count[dev_type as usize] += 1;
                     }
@@ -361,7 +365,7 @@ impl HardsidUsbDevice {
         self.number_of_sids = sid_count;
     }
 
-    pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32) {
+    pub fn set_sid_model(&mut self, dev_nr: i32, sid_socket: i32, sid_model: SidModel) {
         if self.is_connected() {
             if sid_socket >= self.sid_count {
                 return;
@@ -385,6 +389,8 @@ impl HardsidUsbDevice {
             if old_dev_nr != new_dev_nr || !self.device_init_done[new_dev_nr as usize] {
                 self.wait_for_uplay_activation(new_dev_nr);
             }
+
+            self.device_model[sid_socket as usize] = sid_model;
         }
     }
 
@@ -492,14 +498,36 @@ impl HardsidUsbDevice {
                         if !self.is_connected() {
                             break;
                         }
+
+                        self.configure_sid_replacements(dev_nr, i, base_reg);
                     }
                 }
             } else {
                 self.reset_sid(dev_nr, base_reg);
+                self.configure_sid_replacements(dev_nr, dev_nr as usize, base_reg);
             }
 
             self.write_direct(dev_nr, 40000, base_reg + DUMMY_REG, 0);
             self.force_flush(dev_nr);
+        }
+    }
+
+    fn configure_sid_replacements(&mut self, dev_nr: i32, sid_model_index: usize, base_reg: u8) {
+        let sid_filter = SidFilter {
+            filter_strength_6581: 1,
+            filter_lowest_freq_6581: 3,
+            filter_central_freq_8580: 3,
+            filter_lowest_freq_8580: 0
+        };
+
+        let sid_writes = armsid::configure_armsid(&self.device_model[sid_model_index], &sid_filter);
+        for sid_write in sid_writes {
+            self.write_direct(dev_nr, sid_write.cycles, base_reg + sid_write.reg, sid_write.data);
+        }
+
+        let sid_writes = fpgasid::configure_fpgasid(&self.device_model[sid_model_index]);
+        for sid_write in sid_writes {
+            self.write_direct(dev_nr, sid_write.cycles, base_reg + sid_write.reg, sid_write.data);
         }
     }
 
