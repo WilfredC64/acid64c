@@ -3,7 +3,7 @@
 
 use super::clock_adjust::ClockAdjust;
 use super::hardsid_usb::{HardSidUsb, HSID_USB_STATE_OK, HSID_USB_STATE_ERROR, HSID_USB_STATE_BUSY, DEV_TYPE_HS_4U, DEV_TYPE_HS_UPLAY, DEV_TYPE_HS_UNO};
-use super::sid_device::{DeviceId, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
+use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 use crate::utils::{armsid, armsid::SidFilter, fpgasid};
 
@@ -52,7 +52,7 @@ impl SidDevice for HardsidUsbDeviceFacade {
         self.hs_device.get_device_count()
     }
 
-    fn get_device_info(&mut self, dev_nr: i32) -> String {
+    fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo {
         self.hs_device.get_device_info(dev_nr)
     }
 
@@ -350,7 +350,7 @@ impl HardsidUsbDevice {
         self.sid_count
     }
 
-    pub fn get_device_info(&self, dev_nr: i32) -> String {
+    pub fn get_device_info(&self, dev_nr: i32) -> DeviceInfo {
         let dev_name = match self.device_type[dev_nr as usize] {
             DEV_TYPE_HS_4U => "HardSID 4U ",
             DEV_TYPE_HS_UPLAY => "HS UPlay ",
@@ -358,7 +358,9 @@ impl HardsidUsbDevice {
             _ => "Unknown HS "
         };
         let dev_index = self.device_index[dev_nr as usize];
-        dev_name.to_string() + &(dev_index + 1).to_string()
+
+        let device_name = dev_name.to_string() + &(dev_index + 1).to_string();
+        DeviceInfo { id: device_name.clone(), name: device_name }
     }
 
     pub fn set_sid_count(&mut self, sid_count: i32) {

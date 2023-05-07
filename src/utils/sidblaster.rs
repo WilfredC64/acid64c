@@ -10,7 +10,7 @@ const TIME_OUT_IN_MILLIS: u64 = 1000;
 const ERROR_MSG_DEVICE_FAILURE: &str = "Failed to communicate with FTDI device.";
 pub const ERROR_MSG_NO_SIDBLASTER_FOUND: &str = "No SIDBlaster USB device found.";
 
-pub fn detect_devices() -> Result<Vec<String>, String> {
+pub fn detect_devices() -> Result<Vec<(String, String)>, String> {
     let serials = get_serials()?;
     get_device_names(&serials)
 }
@@ -42,12 +42,17 @@ fn get_serials() -> Result<Vec<String>, String> {
     Ok(serials)
 }
 
-fn get_device_names(serials: &[String]) -> Result<Vec<String>, String> {
-    serials.iter().map(|serial| {
+fn get_device_names(serials: &[String]) -> Result<Vec<(String, String)>, String> {
+    let device_names: Result<Vec<(String, String)>, String> = serials.iter().map(|serial| {
         let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         let device_info = usb_device.device_info().map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
-        Ok(device_info.description.replace("/USB", "").replace('/', " ").trim().to_string())
-    }).collect()
+        Ok(("SB".to_string() + serial, device_info.description.replace("/USB", "").replace('/', " ").trim().to_string()))
+    }).collect();
+
+    let mut device_names: Vec<(String, String)> = device_names?;
+
+    device_names.sort_unstable_by_key(|(id, name)| name.to_owned() + id);
+    Ok(device_names)
 }
 
 fn configure_device(usb_device: &mut Ftdi) -> Result<(), FtStatus> {

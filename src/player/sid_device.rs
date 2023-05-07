@@ -35,6 +35,12 @@ pub enum DeviceId {
     SidBlaster = 3
 }
 
+#[derive(Clone)]
+pub struct DeviceInfo {
+    pub id: String,
+    pub name: String
+}
+
 pub const DUMMY_REG: u8 = 0x1e;
 
 pub trait SidDevice {
@@ -52,7 +58,7 @@ pub trait SidDevice {
 
     fn get_device_count(&mut self, dev_nr: i32) -> i32;
 
-    fn get_device_info(&mut self, dev_nr: i32) -> String;
+    fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo;
 
     fn set_sid_count(&mut self, dev_nr: i32, sid_count: i32);
 

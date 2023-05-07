@@ -1,7 +1,7 @@
 // Copyright (C) 2020 - 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use super::sid_device::{SidDevice, SidClock, SamplingMethod, DeviceResponse, DeviceId};
+use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, SamplingMethod, SidClock, SidDevice};
 use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
 use super::network_sid_device::{NetworkSidDevice, NetworkSidDeviceFacade};
 use super::sidblaster_usb_device::{SidBlasterUsbDevice, SidBlasterUsbDeviceFacade};
@@ -42,7 +42,7 @@ impl SidDevice for SidDevicesFacade {
         self.devices.get_device_count(dev_nr)
     }
 
-    fn get_device_info(&mut self, dev_nr: i32) -> String {
+    fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo {
         self.devices.get_device_info(dev_nr)
     }
 
@@ -154,7 +154,7 @@ impl SidDevice for SidDevicesFacade {
 pub struct SidDevices {
     sid_devices: Vec<Box<dyn SidDevice + Send>>,
     device_count: i32,
-    device_name: Vec<String>,
+    device_name: Vec<DeviceInfo>,
     device_mapping_id: Vec<u8>,
     device_sid_count: Vec<u8>,
     device_offset: Vec<u8>,
@@ -417,7 +417,7 @@ impl SidDevices {
         self.device_count
     }
 
-    pub fn get_device_info(&self, dev_nr: i32) -> String {
+    pub fn get_device_info(&self, dev_nr: i32) -> DeviceInfo {
         self.device_name[dev_nr as usize].clone()
     }
 

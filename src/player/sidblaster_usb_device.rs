@@ -2,7 +2,7 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use super::clock_adjust::ClockAdjust;
-use super::sid_device::{DeviceId, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
+use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
 use super::sidblaster_scheduler::{SidBlasterScheduler, SidWrite, SID_WRITES_BUFFER_SIZE, MAX_CYCLES_IN_BUFFER};
 use super::{ABORT_NO, MIN_CYCLE_SID_WRITE};
 use crate::player::ABORTED;
@@ -50,7 +50,7 @@ impl SidDevice for SidBlasterUsbDeviceFacade {
         self.sb_device.get_device_count()
     }
 
-    fn get_device_info(&mut self, dev_nr: i32) -> String {
+    fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo {
         self.sb_device.get_device_info(dev_nr)
     }
 
@@ -160,7 +160,7 @@ impl SidDevice for SidBlasterUsbDeviceFacade {
 }
 
 pub struct SidBlasterUsbDevice {
-    device_names: Vec<String>,
+    device_names: Vec<DeviceInfo>,
     sid_count: i32,
     number_of_sids: i32,
     sid_clock: SidClock,
@@ -222,7 +222,8 @@ impl SidBlasterUsbDevice {
         self.abort_type.store(ABORT_NO, Ordering::Relaxed);
         self.last_error = None;
 
-        self.device_names = sidblaster::detect_devices()?;
+        let device_info = sidblaster::detect_devices()?;
+        self.device_names = device_info.iter().map(|(id, name)| DeviceInfo { id: id.to_string(), name: name.to_string() }).collect();
         self.sid_count = self.device_names.len() as i32;
 
         if self.sid_count > 0 {
@@ -284,7 +285,7 @@ impl SidBlasterUsbDevice {
         self.sid_count
     }
 
-    pub fn get_device_info(&mut self, dev_nr: i32) -> String {
+    pub fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo {
         self.device_names[dev_nr as usize].clone()
     }
 

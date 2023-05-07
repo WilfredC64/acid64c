@@ -7,7 +7,7 @@ use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
 
 use crate::utils::network;
-use super::sid_device::{DeviceId, DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
+use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 
 const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
@@ -88,7 +88,7 @@ impl SidDevice for NetworkSidDeviceFacade {
         self.ns_device.get_device_count()
     }
 
-    fn get_device_info(&mut self, dev_nr: i32) -> String {
+    fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo {
         self.ns_device.get_device_info(dev_nr)
     }
 
@@ -313,12 +313,12 @@ impl NetworkSidDevice {
         self.device_count
     }
 
-    pub fn get_device_info(&mut self, dev_nr: i32) -> String {
-        if self.interface_version >= 2 {
+    pub fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo {
+        let device_name = if self.interface_version >= 2 {
             let (_, device_name) = self.try_flush_buffer(Command::GetConfigInfo, dev_nr, None);
 
             if !device_name.is_empty() {
-                return String::from_utf8(device_name).unwrap()
+                String::from_utf8(device_name).unwrap()
                     .replace("JSidDevice10_", "Default")
                     .replace('(', " - ")
                     .replace(')', "")
@@ -326,14 +326,16 @@ impl NetworkSidDevice {
                     .replace("6581", " 6581")
                     .replace("8580", " 8580")
                     .replace("  ", " ")
+            } else {
+                "Unknown".to_string()
             }
-
-            "Unknown".to_string()
         } else if dev_nr == 0 {
             "Default 6581".to_string()
         } else {
             "Default 8580".to_string()
-        }
+        };
+
+        DeviceInfo { id: device_name.clone(), name: device_name }
     }
 
     pub fn set_sid_count(&mut self, sid_count: i32) {

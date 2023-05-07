@@ -533,7 +533,7 @@ impl Player
 
         let device_count = self.sid_device.as_mut().unwrap().get_device_count(self.device_number);
         for i in 0..device_count {
-            let device_name = self.sid_device.as_mut().unwrap().get_device_info(i);
+            let device_name = self.sid_device.as_mut().unwrap().get_device_info(i).name;
             device_names.push(device_name);
         }
 
@@ -604,7 +604,7 @@ impl Player
     }
 
     pub fn get_device_info(&mut self, device_number: i32) -> String {
-        self.sid_device.as_mut().unwrap().get_device_info(device_number)
+        self.sid_device.as_mut().unwrap().get_device_info(device_number).name
     }
 
     pub fn has_remote_sidplayer(&mut self) -> bool {

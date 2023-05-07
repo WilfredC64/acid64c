@@ -9,7 +9,7 @@ use attohttpc::{Error, Multipart, MultipartBuilder, MultipartFile, Response};
 
 use crate::utils::{sid_file, network};
 
-use super::sid_device::{DeviceId, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
+use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
 
 const TOTAL_TIMEOUT: u64 = 5000;
 const CONNECTION_TIMEOUT: u64 = 500;
@@ -61,7 +61,7 @@ impl SidDevice for UltimateDeviceFacade {
         self.us_device.get_device_count()
     }
 
-    fn get_device_info(&mut self, dev_nr: i32) -> String {
+    fn get_device_info(&mut self, dev_nr: i32) -> DeviceInfo {
         self.us_device.get_device_info(dev_nr)
     }
 
@@ -307,8 +307,8 @@ impl UltimateDevice {
         self.device_count
     }
 
-    pub fn get_device_info(&mut self, _dev_nr: i32) -> String {
-        "Ultimate Device".to_string()
+    pub fn get_device_info(&mut self, _dev_nr: i32) -> DeviceInfo {
+        DeviceInfo { id: "Ultimate Device".to_string(), name: "Ultimate Device".to_string() }
     }
 
     pub fn set_sid_clock(&mut self, sid_clock: SidClock) {
