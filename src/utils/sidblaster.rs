@@ -16,7 +16,8 @@ pub fn detect_devices() -> Result<Vec<(String, String)>, String> {
 }
 
 pub fn get_devices() -> Result<Vec<Ftdi>, String> {
-    get_serials()?.iter().map(|serial| {
+    let serials = get_serials()?;
+    get_device_names(&serials)?.iter().map(|(serial, _)| {
         let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         configure_device(&mut usb_device).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         Ok(usb_device)
@@ -46,7 +47,7 @@ fn get_device_names(serials: &[String]) -> Result<Vec<(String, String)>, String>
     let device_names: Result<Vec<(String, String)>, String> = serials.iter().map(|serial| {
         let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         let device_info = usb_device.device_info().map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
-        Ok(("SB".to_string() + serial, device_info.description.replace("/USB", "").replace('/', " ").trim().to_string()))
+        Ok((serial.to_owned(), device_info.description.replace("/USB", "").replace('/', " ").trim().to_string()))
     }).collect();
 
     let mut device_names: Vec<(String, String)> = device_names?;
