@@ -16,8 +16,7 @@ pub fn detect_devices() -> Result<Vec<(String, String)>, String> {
 }
 
 pub fn get_devices() -> Result<Vec<Ftdi>, String> {
-    let serials = get_serials()?;
-    get_device_names(&serials)?.iter().map(|(serial, _)| {
+    get_serials()?.iter().map(|serial| {
         let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         configure_device(&mut usb_device).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         Ok(usb_device)
@@ -35,25 +34,21 @@ pub fn write(sid_device: &mut Ftdi, data: &[u8]) -> Result<usize, FtStatus> {
 }
 
 fn get_serials() -> Result<Vec<String>, String> {
-    let devices = list_devices().map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
-    let serials = devices.iter()
+    let mut devices = list_devices().map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
+    devices.sort_unstable_by_key(|device| device.description.to_owned() + &device.serial_number);
+
+    Ok(devices.iter()
         .filter(|device| device.vendor_id == 0x0403 && device.description.starts_with("SIDBlaster/USB"))
         .map(|device| device.serial_number.clone())
-        .collect::<Vec<_>>();
-    Ok(serials)
+        .collect::<Vec<_>>())
 }
 
 fn get_device_names(serials: &[String]) -> Result<Vec<(String, String)>, String> {
-    let device_names: Result<Vec<(String, String)>, String> = serials.iter().map(|serial| {
+    serials.iter().map(|serial| {
         let mut usb_device = Ftdi::with_serial_number(serial).map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         let device_info = usb_device.device_info().map_err(|_| ERROR_MSG_DEVICE_FAILURE.to_string())?;
         Ok((serial.to_owned(), device_info.description.replace("/USB", "").replace('/', " ").trim().to_string()))
-    }).collect();
-
-    let mut device_names: Vec<(String, String)> = device_names?;
-
-    device_names.sort_unstable_by_key(|(id, name)| name.to_owned() + id);
-    Ok(device_names)
+    }).collect()
 }
 
 fn configure_device(usb_device: &mut Ftdi) -> Result<(), FtStatus> {
