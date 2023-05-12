@@ -266,11 +266,11 @@ impl SidBlasterUsbDevice {
     }
 
     pub fn is_connected(&self) -> bool {
-        !self.device_names.is_empty()
+        !self.device_names.is_empty() && !self.is_aborted()
     }
 
     pub fn test_connection(&mut self, dev_nr: i32) {
-        if self.is_connected() && self.is_aborted() {
+        if !self.is_connected() {
             self.disconnect_with_error(ERROR_MSG_DEVICE_FAILURE.to_string());
         } else {
             self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, DUMMY_REG, 0);
@@ -333,9 +333,10 @@ impl SidBlasterUsbDevice {
 
     fn wait_until_queue_is_processed(&mut self) {
         loop {
-            if self.queue.len() == 0 {
+            if self.queue.len() == 0 || self.is_aborted() {
                 break;
             }
+
             self.start_draining();
 
             thread::yield_now();
