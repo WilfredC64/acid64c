@@ -5,15 +5,15 @@ use std::cmp::min;
 use super::sid_device::SidClock;
 use super::MIN_CYCLE_SID_WRITE;
 
-const HS_CLOCK: f64 = 1_000_000.0;
+const ONE_MH_CLOCK: f64 = 1_000_000.0;
 const PAL_CLOCK: f64 = 17_734_475.0 / 18.0;
 const NTSC_CLOCK: f64 = 14_318_180.0 / 14.0;
 
-const PAL_CLOCK_SCALE: f64 = (HS_CLOCK - PAL_CLOCK) / HS_CLOCK;
-const NTSC_CLOCK_SCALE: f64 = (NTSC_CLOCK - HS_CLOCK) / HS_CLOCK;
+const PAL_CLOCK_SCALE: f64 = (ONE_MH_CLOCK - PAL_CLOCK) / ONE_MH_CLOCK;
+const NTSC_CLOCK_SCALE: f64 = (NTSC_CLOCK - ONE_MH_CLOCK) / ONE_MH_CLOCK;
 
-const PAL_FREQ_SCALE: u32 = (((PAL_CLOCK - HS_CLOCK) * 65_536.0 / PAL_CLOCK) + 65_536.0) as u32;
-const NTSC_FREQ_SCALE: u32 = (((NTSC_CLOCK - HS_CLOCK) * 65_536.0 / NTSC_CLOCK) + 65_536.0) as u32;
+const PAL_FREQ_SCALE: u32 = (((PAL_CLOCK - ONE_MH_CLOCK) * 65_536.0 / PAL_CLOCK) + 65_536.0) as u32;
+const NTSC_FREQ_SCALE: u32 = (((NTSC_CLOCK - ONE_MH_CLOCK) * 65_536.0 / NTSC_CLOCK) + 65_536.0) as u32;
 
 pub struct ClockAdjust {
     total_cycles_to_stretch: f64,
@@ -40,32 +40,40 @@ impl ClockAdjust {
     }
 
     pub fn adjust_cycles(&mut self, cycles: u32) -> u32 {
-        let cycles = cycles as f64;
+        let mut cycles = cycles as f64;
 
         if self.clock == SidClock::Pal {
-            let cycles_to_stretch = cycles * PAL_CLOCK_SCALE;
-            self.total_cycles_to_stretch += cycles_to_stretch;
+            self.total_cycles_to_stretch += cycles * PAL_CLOCK_SCALE;
 
             if self.total_cycles_to_stretch >= 1.0 {
                 let stretch_rounded = self.total_cycles_to_stretch.trunc();
                 self.total_cycles_to_stretch -= stretch_rounded;
-                return (cycles + stretch_rounded) as u32;
+                cycles += stretch_rounded;
             }
         } else {
-            let cycles_to_stretch = cycles * NTSC_CLOCK_SCALE;
-            self.total_cycles_to_stretch += cycles_to_stretch;
+            self.total_cycles_to_stretch += cycles * NTSC_CLOCK_SCALE;
 
             if self.total_cycles_to_stretch >= 1.0 {
-                if cycles + 1.0 > self.total_cycles_to_stretch {
+                if cycles > self.total_cycles_to_stretch {
                     let stretch_rounded = self.total_cycles_to_stretch.trunc();
                     self.total_cycles_to_stretch -= stretch_rounded;
-                    return (cycles - stretch_rounded) as u32;
-                } else if cycles as u32 > MIN_CYCLE_SID_WRITE {
-                    self.total_cycles_to_stretch -= cycles - MIN_CYCLE_SID_WRITE as f64;
-                    return MIN_CYCLE_SID_WRITE;
+                    cycles -= stretch_rounded;
+                } else {
+                    self.total_cycles_to_stretch -= cycles;
+                    cycles = 0.0;
                 }
             }
         }
+
+        if (cycles as u32) < MIN_CYCLE_SID_WRITE {
+            if self.clock == SidClock::Pal {
+                self.total_cycles_to_stretch -= MIN_CYCLE_SID_WRITE as f64 - cycles;
+            } else {
+                self.total_cycles_to_stretch += MIN_CYCLE_SID_WRITE as f64 - cycles;
+            }
+            return MIN_CYCLE_SID_WRITE;
+        }
+
         cycles as u32
     }
 
