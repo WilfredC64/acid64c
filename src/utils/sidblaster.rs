@@ -1,12 +1,14 @@
 // Copyright (C) 2023 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
-use std::time::Duration;
+#![allow(dead_code)]
+use std::time::{Duration, Instant};
 use libftd2xx::{BitsPerWord, Ftdi, FtdiCommon, FtStatus, list_devices, Parity, StopBits};
 
 const BAUD_RATE: u32 = 500_000;
 const LATENCY_IN_MILLIS: u64 = 2;
-const TIME_OUT_IN_MILLIS: u64 = 1000;
+const DEVICE_TIME_OUT_IN_MILLIS: u64 = 1000;
+const LOOP_TIME_OUT_MILLIS: u64 = 250;
 const ERROR_MSG_DEVICE_FAILURE: &str = "Failed to communicate with FTDI device.";
 pub const ERROR_MSG_NO_SIDBLASTER_FOUND: &str = "No SIDBlaster USB device found.";
 
@@ -55,7 +57,39 @@ fn configure_device(usb_device: &mut Ftdi) -> Result<(), FtStatus> {
     usb_device.set_baud_rate(BAUD_RATE)?;
     usb_device.set_data_characteristics(BitsPerWord::Bits8, StopBits::Bits1, Parity::No)?;
     usb_device.set_break_off()?;
-    usb_device.set_flow_control_xon_xoff(0, 0)?;
+    usb_device.set_flow_control_xon_xoff(0x11, 0x13)?;
     usb_device.set_latency_timer(Duration::from_millis(LATENCY_IN_MILLIS))?;
-    usb_device.set_timeouts(Duration::from_millis(TIME_OUT_IN_MILLIS), Duration::from_millis(TIME_OUT_IN_MILLIS))
+    usb_device.set_timeouts(Duration::from_millis(DEVICE_TIME_OUT_IN_MILLIS), Duration::from_millis(DEVICE_TIME_OUT_IN_MILLIS))
+}
+
+pub fn read(sid_device: &mut Ftdi, reg: u8) -> Result<u8, FtStatus> {
+    sid_device.write(&[reg | 0xa0])?;
+
+    let mut buf: [u8; 1] = [0; 1];
+    let mut remaining = 0;
+    let loop_timeout = Duration::from_millis(LOOP_TIME_OUT_MILLIS);
+
+    let now = Instant::now();
+    loop {
+        remaining = sid_device.queue_status()?;
+        if remaining > 0 {
+            break;
+        }
+        if now.elapsed() > loop_timeout {
+            break;
+        }
+    }
+
+    let now = Instant::now();
+    loop {
+        remaining -= sid_device.read(&mut buf)?;
+        if remaining == 0 {
+            break;
+        }
+        if now.elapsed() > loop_timeout {
+            break;
+        }
+    }
+
+    Ok(buf[0])
 }
