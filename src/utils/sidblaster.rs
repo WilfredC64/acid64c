@@ -66,7 +66,7 @@ pub fn read(sid_device: &mut Ftdi, reg: u8) -> Result<u8, FtStatus> {
     sid_device.write(&[reg | 0xa0])?;
 
     let mut buf: [u8; 1] = [0; 1];
-    let mut remaining = 0;
+    let mut remaining;
     let loop_timeout = Duration::from_millis(LOOP_TIME_OUT_MILLIS);
 
     let now = Instant::now();
