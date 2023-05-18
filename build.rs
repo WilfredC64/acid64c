@@ -3,7 +3,7 @@ use std::path::Path;
 use std::env;
 
 fn main() {
-    if cfg!(target_os = "windows") {
+    #[cfg(windows)] {
         let mut res = winres::WindowsResource::new();
         res.set_icon("resources/acid64.ico");
         res.compile().unwrap();

@@ -23,6 +23,7 @@ use std::{thread, time};
 use std::collections::VecDeque;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
+#[cfg(windows)]
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
 
 use crate::utils::hvsc;
@@ -131,6 +132,7 @@ impl Drop for Player {
         if self.c64_instance > 0 {
             self.acid64_lib.close_c64_instance(self.c64_instance);
         }
+        #[cfg(windows)]
         unsafe {
             timeEndPeriod(1);
         }
@@ -140,6 +142,7 @@ impl Drop for Player {
 impl Player
 {
     pub fn new() -> Player {
+        #[cfg(windows)]
         unsafe {
             timeBeginPeriod(1);
         }
