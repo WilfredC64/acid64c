@@ -33,8 +33,10 @@ cargo build --release
 acid64c <options> <file_name>
 
 <Options>
+  -c: adjust clock for devices that don't support PAL/NTSC clock
   -d{device_number,n}: set device numbers (1..n) for each SID chip, default is 1
-  -h{host_name}: host name or ip of network sid device, default is localhost
+  -hs{host_name}: host name or IP of network sid device, default is localhost
+  -hu{ip_address}: IP of Ultimate device
   -i: display STIL info if present
   -l{hvsc_location}: specify the HVSC location for song length and STIL info
   -p: print available devices
