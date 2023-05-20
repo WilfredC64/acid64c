@@ -229,6 +229,7 @@ impl SidBlasterUsbDevice {
         if self.sid_count > 0 {
             self.sid_blaster_scheduler.start()
         } else {
+            self.last_error = Some(sidblaster::ERROR_MSG_NO_SIDBLASTER_FOUND.to_string());
             Err(sidblaster::ERROR_MSG_NO_SIDBLASTER_FOUND.to_string())
         }
     }
@@ -256,7 +257,7 @@ impl SidBlasterUsbDevice {
         self.clock_adjust.init(self.sid_clock);
     }
 
-    pub fn disconnect_with_error(&mut self, error_message: String) {
+    fn disconnect_with_error(&mut self, error_message: String) {
         self.last_error = Some(error_message);
         self.disconnect();
     }
@@ -593,7 +594,7 @@ impl SidBlasterUsbDevice {
         }
     }
 
-    pub fn has_max_data_in_buffer(&mut self) -> bool {
+    fn has_max_data_in_buffer(&mut self) -> bool {
         let cycles = self.cycles_in_buffer.load(Ordering::SeqCst);
 
         let enough_data = self.queue.len() > SID_WRITES_BUFFER_SIZE / 2 || cycles > MAX_CYCLES_IN_BUFFER;
@@ -609,7 +610,7 @@ impl SidBlasterUsbDevice {
         enough_data
     }
 
-    pub fn start_draining(&mut self) {
+    fn start_draining(&mut self) {
         self.queue_started.store(true, Ordering::SeqCst);
     }
 
