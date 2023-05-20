@@ -4,7 +4,8 @@ ACID64 Console Player is a console application for playing C64 music files on Wi
 
 The player requires a network SID device to be installed (such as
 [SID-Device](https://github.com/WilfredC64/sid-device/) or
-[JSIDDevice](https://sourceforge.net/projects/jsidplay2/files/jsiddevice/)) or a HardSID USB device.
+[JSIDDevice](https://sourceforge.net/projects/jsidplay2/files/jsiddevice/)) or
+a hardware device such as a HardSID USB, SIDBlaster USB or an Ultimate 64/1541.
 
 The player makes use of the acid64pro.dll win32 library. Since this dll is a 32-bit
 library, the code of the player can only run successfully when compiled for Windows 32-bit.
