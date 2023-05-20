@@ -57,7 +57,7 @@ fn configure_device(usb_device: &mut Ftdi) -> Result<(), FtStatus> {
     usb_device.set_baud_rate(BAUD_RATE)?;
     usb_device.set_data_characteristics(BitsPerWord::Bits8, StopBits::Bits1, Parity::No)?;
     usb_device.set_break_off()?;
-    usb_device.set_flow_control_xon_xoff(0x11, 0x13)?;
+    usb_device.set_flow_control_none()?;
     usb_device.set_latency_timer(Duration::from_millis(LATENCY_IN_MILLIS))?;
     usb_device.set_timeouts(Duration::from_millis(DEVICE_TIME_OUT_IN_MILLIS), Duration::from_millis(DEVICE_TIME_OUT_IN_MILLIS))
 }
