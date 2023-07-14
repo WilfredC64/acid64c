@@ -12,6 +12,8 @@ mod sidblaster_usb_device;
 mod sidblaster_scheduler;
 mod sid_data_processor;
 mod sid_devices;
+mod sldb;
+mod stil;
 mod ultimate_device;
 
 use parking_lot::Mutex;
@@ -31,6 +33,8 @@ use self::acid64_library::Acid64Library;
 use self::sid_data_processor::{SidDataProcessor, SidWrite};
 use self::sid_device::{DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
 use self::sid_devices::{SidDevices, SidDevicesFacade};
+use self::stil::Stil;
+use self::sldb::Sldb;
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
 const NTSC_CYCLES_PER_SECOND: u32 = 263 * 65 * 60;
@@ -50,6 +54,8 @@ const SID_MODEL_8580: i32 = 2;
 const BUSY_WAIT_MILLIS: u64 = 1;
 const PAUSE_SLEEP_MILLIS: u64 = 10;
 const ABORT_DEVICE_DELAY_MILLIS: u64 = 20;
+
+const DEFAULT_SONG_LENGTH_IN_MILLIS: i32 = 300000;
 
 pub const ABORT_NO: AbortType = 0;
 pub const ABORT_TO_QUIT: AbortType = 1;
@@ -106,6 +112,7 @@ pub struct Player {
     sid_device: Option<Box<dyn SidDevice + Send>>,
     sid_data_processor: SidDataProcessor,
     filename: Option<String>,
+    md5_hash: String,
     device_number: i32,
     device_numbers: Vec<i32>,
     song_number: i32,
@@ -125,6 +132,8 @@ pub struct Player {
     fast_forward_speed: i32,
     total_cycles: u32,
     output: Arc<Mutex<PlayerOutput>>,
+    stil: Stil,
+    sldb: Sldb
 }
 
 impl Drop for Player {
@@ -155,6 +164,7 @@ impl Player
             sid_device: None,
             sid_data_processor: SidDataProcessor::new(),
             filename: None,
+            md5_hash: "".to_string(),
             device_number: 0,
             device_numbers: vec![],
             song_number: 0,
@@ -174,6 +184,8 @@ impl Player
             fast_forward_speed: 1,
             total_cycles: 0,
             output: Arc::new(Mutex::new(PlayerOutput { time: 0 })),
+            stil: Stil::new(),
+            sldb: Sldb::new()
         };
 
         player_properties.setup_c64_instance();
@@ -458,7 +470,7 @@ impl Player
         let mut song_lengths_in_millis = vec![];
         for song_number in 0..self.get_number_of_songs() {
             self.acid64_lib.set_song_to_play(self.c64_instance, song_number);
-            song_lengths_in_millis.push(self.acid64_lib.get_song_length(self.c64_instance));
+            song_lengths_in_millis.push(self.get_song_length());
         }
 
         self.acid64_lib.set_song_to_play(self.c64_instance, self.song_number);
@@ -481,8 +493,8 @@ impl Player
         let mut value = value;
         let mut result = 0;
         let mut shift = 0;
-        while value > 0 {
-            result |= (value % 10) << shift;
+        while value != 0 {
+            result += (value % 10) << shift;
             value /= 10;
             shift += 4;
         }
@@ -563,7 +575,7 @@ impl Player
     }
 
     pub fn get_song_length(&self) -> i32 {
-        self.acid64_lib.get_song_length(self.c64_instance)
+        self.sldb.get_song_length(&self.md5_hash, self.song_number).unwrap_or(DEFAULT_SONG_LENGTH_IN_MILLIS)
     }
 
     pub fn get_filename(&self) -> Option<String> {
@@ -591,7 +603,12 @@ impl Player
     }
 
     pub fn get_stil_entry(&self) -> Option<String> {
-        self.acid64_lib.get_stil_entry(self.c64_instance)
+        let hvsc_filename = self.sldb.get_hvsc_filename(&self.md5_hash);
+
+        if let Some(hvsc_filename) = hvsc_filename {
+            return self.stil.get_entry(&hvsc_filename);
+        }
+        None
     }
 
     pub fn get_device_numbers(&self) -> Vec<i32> {
@@ -624,10 +641,10 @@ impl Player
         }
 
         if let Some(hvsc_root) = hvsc_root {
-            self.load_sldb(&hvsc_root)?;
+            self.sldb.load(&hvsc_root)?;
 
             if load_stil {
-                self.acid64_lib.load_stil(&hvsc_root);
+                self.stil.load(&hvsc_root)?;
             }
         }
         Ok(())
@@ -666,6 +683,7 @@ impl Player
             Err(format!("File '{filename}' could not be loaded."))
         } else {
             self.filename = Some(filename.to_string());
+            self.md5_hash = self.acid64_lib.get_md5_hash(self.c64_instance);
 
             self.init_devices()?;
             self.configure_sid_device(false)?;
@@ -799,21 +817,6 @@ impl Player
             return Ok(hvsc_root);
         }
         Ok(None)
-    }
-
-    fn load_sldb(&mut self, hvsc_root: &str) -> Result<(), String> {
-        let is_sldb = self.acid64_lib.check_sldb(hvsc_root);
-
-        if !is_sldb {
-            return Err("Song length database is not found or not a database.".to_string());
-        }
-
-        let is_sldb_loaded = self.acid64_lib.load_sldb(hvsc_root);
-
-        if !is_sldb_loaded {
-            return Err("Song length database could not be loaded.".to_string());
-        }
-        Ok(())
     }
 
     fn configure_sid_device(&mut self, should_reset: bool) -> Result<(), String> {

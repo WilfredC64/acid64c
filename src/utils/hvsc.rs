@@ -1,6 +1,7 @@
 // Copyright (C) 2019 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
+#![allow(dead_code)]
 use std::path::Path;
 
 pub fn get_hvsc_root(filename: &str) -> Option<String> {
@@ -31,4 +32,10 @@ pub fn get_hvsc_root(filename: &str) -> Option<String> {
         path = path.parent().unwrap();
     }
     None
+}
+
+pub fn get_hvsc_filename(filename: &str) -> String {
+    let hvsc_root = get_hvsc_root(filename);
+    let filename = filename.rsplit_once(hvsc_root.as_ref().unwrap()).unwrap().1;
+    filename.replace('\\', "/")
 }
