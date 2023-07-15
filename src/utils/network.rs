@@ -8,11 +8,7 @@ use std::str::FromStr;
 
 pub fn is_local_ip_address(host_name: &str) -> bool {
     if let Some(local_ip_address) = resolve_local_ip(host_name) {
-        if !is_link_local(host_name) {
-            is_ip_in_local_network(&local_ip_address)
-        } else {
-            true
-        }
+        is_link_local(host_name) || is_ip_in_local_network(&local_ip_address)
     } else {
         false
     }
