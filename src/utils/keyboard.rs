@@ -9,7 +9,7 @@ pub const LEFT_KEY: char = '\x25';
 pub const RIGHT_KEY: char = '\x27';
 
 pub fn get_char_from_input() -> Option<char> {
-    if poll(Duration::from_millis(0)).unwrap() {
+    if poll(Duration::from_millis(0)).unwrap_or(false) {
         read_char()
     } else {
         None
@@ -18,14 +18,14 @@ pub fn get_char_from_input() -> Option<char> {
 
 pub fn convert_num_key_to_number(key: char) -> i32 {
     match key {
-        '1' ..= '9' => (key as u8 - b'0' - 1) as i32,
+        '1' ..= '9' => key as i32 - '1' as i32,
         '0' => 9,
         _ => -1
     }
 }
 
 fn read_char() -> Option<char> {
-    if let Event::Key(KeyEvent{ code, kind, .. }) = read().unwrap() {
+    if let Ok(Event::Key(KeyEvent{ code, kind, .. })) = read() {
         if kind == KeyEventKind::Press {
             match code {
                 KeyCode::Char(c) => return Some(c),
