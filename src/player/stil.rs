@@ -2,7 +2,6 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::path::Path;
 use crate::utils::file;
@@ -11,6 +10,9 @@ const DOCUMENTS_FOLDER: &str = "DOCUMENTS";
 const STIL_FILE_NAME: &str = "STIL.txt";
 const BUG_LIST_FILE_NAME: &str = "BUGlist.txt";
 const MAX_STIL_FILE_SIZE: u64 = 1024 * 1024 * 1024;
+const MIN_STIL_LINES_CAPACITY: usize = 150;
+const MIN_STIL_ENTRIES_CAPACITY: usize = 20_000;
+const MIN_GLOBAL_ENTRIES_CAPACITY: usize = 300;
 
 pub struct Stil {
     pub stil_info: HashMap<String, String>,
@@ -20,8 +22,8 @@ pub struct Stil {
 impl Stil {
     pub fn new() -> Stil {
         Stil {
-            stil_info: HashMap::<String, String>::new(),
-            global_comments: HashMap::<String, String>::new(),
+            stil_info: HashMap::<String, String>::with_capacity(MIN_STIL_ENTRIES_CAPACITY),
+            global_comments: HashMap::<String, String>::with_capacity(MIN_GLOBAL_ENTRIES_CAPACITY),
         }
     }
 
@@ -50,12 +52,12 @@ impl Stil {
         self.global_comments.clear();
 
         let lines: Vec<String> = file::read_text_file(&stil_file, Some(MAX_STIL_FILE_SIZE))?;
-        self.process_lines(lines);
+        self.process_lines(&lines);
 
         let bug_list_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(BUG_LIST_FILE_NAME);
         if bug_list_file.exists() {
             let lines: Vec<String> = file::read_text_file(&bug_list_file, Some(MAX_STIL_FILE_SIZE))?;
-            self.process_lines(lines);
+            self.process_lines(&lines);
         }
         Ok(())
     }
@@ -65,11 +67,11 @@ impl Stil {
         self.global_comments.clear();
 
         let lines: Vec<String> = file::read_buffer_as_string(buffer);
-        self.process_lines(lines);
+        self.process_lines(&lines);
     }
 
-    fn process_lines(&mut self, lines: Vec<String>) {
-        let mut stil_entry: Vec<String> = vec![];
+    fn process_lines(&mut self, lines: &[String]) {
+        let mut stil_entry: Vec<String> = Vec::with_capacity(MIN_STIL_LINES_CAPACITY);
         let mut stil_filename = "".to_string();
         let mut global = false;
 
@@ -113,12 +115,13 @@ impl Stil {
     fn get_global_entries(&self, sid_file_name: &str) -> Option<String> {
         let mut global_entries: Vec<String> = vec![];
         let mut path = Path::new(sid_file_name);
+
         while let Some(parent_path) = path.parent() {
             path = parent_path;
             let parent_path = parent_path.to_str().unwrap().to_string() + "/";
 
             if let Some(global_comment) = self.global_comments.get(&parent_path) {
-                global_entries.push(global_comment.to_string())
+                global_entries.push(global_comment.to_string());
             }
         }
 

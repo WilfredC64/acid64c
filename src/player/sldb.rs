@@ -2,7 +2,6 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::path::Path;
 use crate::utils::file;
@@ -11,6 +10,7 @@ const DOCUMENTS_FOLDER: &str = "DOCUMENTS";
 const OLD_SLDB_FILE_NAME: &str = "Songlengths.txt";
 const NEW_SLDB_FILE_NAME: &str = "Songlengths.md5";
 const MAX_SLDB_FILE_SIZE: u64 = 1024 * 1024 * 1024;
+const MAX_SUB_SONGS: usize = 256;
 
 pub struct Sldb {
     pub songlengths: HashMap<String, (String, Vec<i32>)>
@@ -43,18 +43,18 @@ impl Sldb {
         }
 
         let lines: Vec<String> = file::read_text_file(&sldb_file, Some(MAX_SLDB_FILE_SIZE))?;
-        self.process_lines(lines)
+        self.process_lines(&lines)
     }
 
     pub fn load_from_buffer(&mut self, buffer: &[u8]) -> Result<(), String> {
         let lines: Vec<String> = file::read_buffer_as_string(buffer);
-        self.process_lines(lines)
+        self.process_lines(&lines)
     }
 
-    fn process_lines(&mut self, lines: Vec<String>) -> Result<(), String> {
-        Self::validate_file_format(&lines)?;
+    fn process_lines(&mut self, lines: &[String]) -> Result<(), String> {
+        Self::validate_file_format(lines)?;
 
-        let mut song_lengths: Vec<i32> = vec![];
+        let mut song_lengths: Vec<i32> = Vec::with_capacity(MAX_SUB_SONGS);
         let mut md5_hash = "".to_string();
         let mut hvsc_filename = "".to_string();
 
@@ -85,6 +85,7 @@ impl Sldb {
                 }
             }
         }
+
         self.add_sldb_entry(&mut hvsc_filename, &mut song_lengths, &mut md5_hash);
         Ok(())
     }
@@ -96,17 +97,21 @@ impl Sldb {
     }
 
     fn validate_file_format(lines: &[String]) -> Result<(), String> {
-        for line in lines {
+        const MAX_LINES_TO_VALIDATE: usize = 20;
+
+        for (index, line) in lines.iter().enumerate() {
             let trimmed_line = line.trim();
 
             if trimmed_line.is_empty() {
+                if index >= MAX_LINES_TO_VALIDATE {
+                    break;
+                }
                 continue;
             }
 
             if trimmed_line == "[Database]" {
                 return Ok(());
             }
-
             break;
         }
 
@@ -114,7 +119,7 @@ impl Sldb {
     }
 
     fn strip_indicators(song_length: &str) -> &str {
-        song_length.split('(').next().unwrap_or(song_length)
+        song_length.find('(').map_or(song_length, |index| &song_length[..index])
     }
 
     fn convert_time_to_millis(song_length: &str) -> i32 {
