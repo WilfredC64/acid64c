@@ -1,12 +1,12 @@
 [package]
 name = "acid64c"
-version = "1.0.8"
+version = "1.0.9"
 authors = ["Wilfred Bos"]
 description = "ACID64 Console SID player."
 readme = "README.md"
 edition = "2021"
 license = "GPL-3.0-or-later"
-keywords = ["ACID64 console player", "sidplayer", "c64 music player", "SID 6581", "SID 8580"]
+keywords = ["acid64-player", "sidplayer", "c64-music-player", "sid-6581", "sid-8580"]
 build = "build.rs"
 
 [dependencies]
