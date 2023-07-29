@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 use std::collections::HashMap;
+use std::io::Error;
 use std::path::Path;
 use crate::utils::file;
 
@@ -51,50 +52,60 @@ impl Stil {
         self.stil_info.clear();
         self.global_comments.clear();
 
-        let lines: Vec<String> = file::read_text_file(&stil_file, Some(MAX_STIL_FILE_SIZE))?;
-        self.process_lines(&lines);
+        let mut lines = file::read_text_file_as_lines(&stil_file, Some(MAX_STIL_FILE_SIZE))?;
+        self.process_lines(&mut lines)?;
 
         let bug_list_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(BUG_LIST_FILE_NAME);
         if bug_list_file.exists() {
-            let lines: Vec<String> = file::read_text_file(&bug_list_file, Some(MAX_STIL_FILE_SIZE))?;
-            self.process_lines(&lines);
+            let mut lines = file::read_text_file_as_lines(&bug_list_file, Some(MAX_STIL_FILE_SIZE))?;
+            self.process_lines(&mut lines)?;
         }
         Ok(())
     }
 
-    pub fn load_from_buffer(&mut self, buffer: &[u8]) {
+    pub fn load_from_buffer(&mut self, buffer: &[u8]) -> Result<(), String> {
         self.stil_info.clear();
         self.global_comments.clear();
 
-        let lines: Vec<String> = file::read_buffer_as_string(buffer);
-        self.process_lines(&lines);
+        let mut lines = file::read_buffer_as_lines(buffer);
+        self.process_lines(&mut lines)
     }
 
-    fn process_lines(&mut self, lines: &[String]) {
-        let mut stil_entry: Vec<String> = Vec::with_capacity(MIN_STIL_LINES_CAPACITY);
+    fn process_lines<T>(&mut self, text_lines: &mut T) -> Result<(), String>
+    where
+        T: Iterator<Item = Result<String, Error>>
+    {
         let mut stil_filename = "".to_string();
         let mut global = false;
+        Self::validate_file_format(text_lines, &mut stil_filename, &mut global)?;
 
-        for line in lines {
-            let stil_text = line.trim();
-            let first_char = stil_text.chars().next().unwrap_or('#');
+        let mut stil_entry: Vec<String> = Vec::with_capacity(MIN_STIL_LINES_CAPACITY);
 
-            match first_char {
-                '#' => continue,
-                '/' => {
-                    self.add_stil_entry(&mut stil_filename, &mut stil_entry, global);
-                    stil_entry.clear();
-
-                    global = stil_text.ends_with('/');
-                    stil_filename = stil_text.to_ascii_lowercase();
-                    continue;
-                },
-                _ => {
-                    stil_entry.push(line.clone());
-                }
-            }
+        for line in text_lines {
+            let line = line.map_err(|error| format!("Error reading STIL file -> {}", error))?;
+            self.process_line(&mut stil_entry, &mut stil_filename, &mut global, line);
         }
         self.add_stil_entry(&mut stil_filename, &mut stil_entry, global);
+        Ok(())
+    }
+
+    fn process_line(&mut self, stil_entry: &mut Vec<String>, stil_filename: &mut String, global: &mut bool, line: String) {
+        let stil_text = line.trim();
+        let first_char = stil_text.chars().next().unwrap_or('#');
+
+        match first_char {
+            '#' => (),
+            '/' => {
+                self.add_stil_entry(stil_filename, stil_entry, *global);
+                stil_entry.clear();
+
+                *global = stil_text.ends_with('/');
+                *stil_filename = stil_text.to_ascii_lowercase();
+            },
+            _ => {
+                stil_entry.push(line.clone());
+            }
+        }
     }
 
     fn add_stil_entry(&mut self, stil_filename: &mut String, stil_entry: &mut Vec<String>, global: bool) {
@@ -130,5 +141,34 @@ impl Stil {
         } else {
             None
         }
+    }
+
+    fn validate_file_format<T>(text_lines: &mut T, stil_filename: &mut String, global: &mut bool) -> Result<(), String>
+    where
+        T: Iterator<Item = Result<String, Error>>
+    {
+        const MAX_LINES_TO_VALIDATE: usize = 50;
+
+        for (index, line) in text_lines.enumerate() {
+            let line = line.map_err(|error| format!("Error reading STIL file -> {}", error))?;
+            let trimmed_line = line.trim();
+
+            if index >= MAX_LINES_TO_VALIDATE {
+                break;
+            }
+
+            let first_char = trimmed_line.chars().next().unwrap_or('#');
+            match first_char {
+                '#' => continue,
+                '/' => {
+                    *global = trimmed_line.ends_with('/');
+                    *stil_filename = trimmed_line.to_ascii_lowercase();
+                    return Ok(());
+                },
+                _ => break
+            }
+        }
+
+        Err("STIL file format error".to_string())
     }
 }

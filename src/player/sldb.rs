@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 use std::collections::HashMap;
+use std::io::Error;
 use std::path::Path;
 use crate::utils::file;
 
@@ -42,17 +43,20 @@ impl Sldb {
             }
         }
 
-        let lines: Vec<String> = file::read_text_file(&sldb_file, Some(MAX_SLDB_FILE_SIZE))?;
-        self.process_lines(&lines)
+        let mut lines = file::read_text_file_as_lines(&sldb_file, Some(MAX_SLDB_FILE_SIZE))?;
+        self.process_lines(&mut lines)
     }
 
     pub fn load_from_buffer(&mut self, buffer: &[u8]) -> Result<(), String> {
-        let lines: Vec<String> = file::read_buffer_as_string(buffer);
-        self.process_lines(&lines)
+        let mut lines = file::read_buffer_as_lines(buffer);
+        self.process_lines(&mut lines)
     }
 
-    fn process_lines(&mut self, lines: &[String]) -> Result<(), String> {
-        Self::validate_file_format(lines)?;
+    fn process_lines<T>(&mut self, text_lines: &mut T) -> Result<(), String>
+    where
+        T: Iterator<Item = Result<String, Error>>
+    {
+        Self::validate_file_format(text_lines)?;
 
         let mut song_lengths: Vec<i32> = Vec::with_capacity(MAX_SUB_SONGS);
         let mut md5_hash = "".to_string();
@@ -60,34 +64,38 @@ impl Sldb {
 
         self.songlengths.clear();
 
-        for line in lines[1..].iter() {
-            let sldb_text = line.trim();
-            let first_char = sldb_text.chars().next().unwrap_or('#');
-
-            match first_char {
-                '#' => continue,
-                ';' => {
-                    self.add_sldb_entry(&mut hvsc_filename, &mut song_lengths, &mut md5_hash);
-                    song_lengths.clear();
-                    hvsc_filename = sldb_text[2..].to_string();
-                    continue;
-                },
-                _ => {
-                    if let Some((hash, lengths)) = sldb_text.split_once('=') {
-                        md5_hash = hash.to_string();
-
-                        for song_length in lengths.split_whitespace() {
-                            let song_length = Self::strip_indicators(song_length);
-                            let song_length_in_millis = Self::convert_time_to_millis(song_length);
-                            song_lengths.push(song_length_in_millis);
-                        }
-                    }
-                }
-            }
+        for line in text_lines {
+            let line = line.map_err(|error| format!("Error reading SLDB file -> {}", error))?;
+            self.process_line(&mut song_lengths, &mut md5_hash, &mut hvsc_filename, line);
         }
 
         self.add_sldb_entry(&mut hvsc_filename, &mut song_lengths, &mut md5_hash);
         Ok(())
+    }
+
+    fn process_line(&mut self, song_lengths: &mut Vec<i32>, md5_hash: &mut String, hvsc_filename: &mut String, line: String) {
+        let sldb_text = line.trim();
+        let first_char = sldb_text.chars().next().unwrap_or('#');
+
+        match first_char {
+            '#' => (),
+            ';' => {
+                self.add_sldb_entry(hvsc_filename, song_lengths, md5_hash);
+                song_lengths.clear();
+                *hvsc_filename = sldb_text[2..].to_string();
+            },
+            _ => {
+                if let Some((hash, lengths)) = sldb_text.split_once('=') {
+                    *md5_hash = hash.to_string();
+
+                    for song_length in lengths.split_whitespace() {
+                        let song_length = Self::strip_indicators(song_length);
+                        let song_length_in_millis = Self::convert_time_to_millis(song_length);
+                        song_lengths.push(song_length_in_millis);
+                    }
+                }
+            }
+        }
     }
 
     fn add_sldb_entry(&mut self, hvsc_filename: &mut String, song_lengths: &mut Vec<i32>, md5_hash: &mut String) {
@@ -96,11 +104,15 @@ impl Sldb {
         }
     }
 
-    fn validate_file_format(lines: &[String]) -> Result<(), String> {
+    fn validate_file_format<T>(text_lines: &mut T) -> Result<(), String>
+        where
+            T: Iterator<Item = Result<String, Error>>
+    {
         const MAX_LINES_TO_VALIDATE: usize = 20;
 
-        for (index, line) in lines.iter().enumerate() {
-            let trimmed_line = line.trim();
+        for (index, line) in text_lines.enumerate() {
+            let line = line.map_err(|error| format!("Error reading SLDB file -> {}", error))?;
+            let trimmed_line = line.trim_start();
 
             if trimmed_line.is_empty() {
                 if index >= MAX_LINES_TO_VALIDATE {
@@ -109,7 +121,7 @@ impl Sldb {
                 continue;
             }
 
-            if trimmed_line == "[Database]" {
+            if trimmed_line.starts_with("[Database]") {
                 return Ok(());
             }
             break;

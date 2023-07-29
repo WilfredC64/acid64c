@@ -3,34 +3,31 @@
 
 #![allow(dead_code)]
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Error};
 use std::path::PathBuf;
 use encoding_rs::WINDOWS_1252;
 use encoding_rs_io::DecodeReaderBytesBuilder;
 
-pub fn read_buffer_as_string(buffer: &[u8]) -> Vec<String> {
-    let lines = BufReader::new(DecodeReaderBytesBuilder::new()
+pub fn read_buffer_as_lines(buffer: &[u8]) -> impl Iterator<Item = io::Result<String>> + '_ {
+    BufReader::new(DecodeReaderBytesBuilder::new()
         .encoding(Some(WINDOWS_1252))
-        .build(buffer)).lines();
-    lines.flatten().collect()
+        .build(buffer)).lines()
 }
 
-pub fn read_text_file(config_path: &PathBuf, max_file_size: Option<u64>) -> Result<Vec<String>, String> {
+pub fn read_text_file_as_lines(config_path: &PathBuf, max_file_size: Option<u64>) -> Result<impl Iterator<Item = io::Result<String>>, String> {
     let lines = read_lines(config_path, max_file_size);
     lines.map_err(|error| format!("Error reading file: {} -> {}", config_path.display(), error))
 }
 
-fn read_lines(filename: &PathBuf, max_file_size: Option<u64>) -> io::Result<Vec<String>> {
+fn read_lines(filename: &PathBuf, max_file_size: Option<u64>) -> io::Result<impl Iterator<Item = io::Result<String>>> {
     let file = File::open(filename)?;
     if let Some(max_file_size) = max_file_size {
         if file.metadata()?.len() > max_file_size {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "File too large"));
+            return Err(Error::new(io::ErrorKind::InvalidData, "File too large"));
         }
     }
 
-    let lines = BufReader::new(
-        DecodeReaderBytesBuilder::new()
-            .encoding(Some(WINDOWS_1252))
-            .build(file)).lines();
-    Ok(lines.flatten().collect())
+    Ok(BufReader::new(DecodeReaderBytesBuilder::new()
+        .encoding(Some(WINDOWS_1252))
+        .build(file)).lines())
 }
