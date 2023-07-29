@@ -87,7 +87,7 @@ impl Stil {
     }
 
     fn process_line(&mut self, stil_entry: &mut Vec<String>, stil_filename: &mut String, global: &mut bool, line: String) {
-        let stil_text = line.trim();
+        let stil_text = line.trim_end();
         let first_char = stil_text.chars().next().unwrap_or('#');
 
         match first_char {
