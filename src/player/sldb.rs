@@ -2,36 +2,41 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #![allow(dead_code)]
-use std::collections::HashMap;
 use std::io::Error;
 use std::path::Path;
+
 use crate::utils::file;
+use fxhash::FxHashMap;
 
 const DOCUMENTS_FOLDER: &str = "DOCUMENTS";
 const OLD_SLDB_FILE_NAME: &str = "Songlengths.txt";
 const NEW_SLDB_FILE_NAME: &str = "Songlengths.md5";
 const MAX_SLDB_FILE_SIZE: u64 = 1024 * 1024 * 1024;
-const MAX_SUB_SONGS: usize = 256;
+const MIN_ENTRIES_CAPACITY: usize = 80_000;
 
 pub struct Sldb {
-    pub songlengths: HashMap<String, (String, Vec<i32>)>
+    pub songlengths: FxHashMap<String, (String, String)>
 }
 
 impl Sldb {
     pub fn new() -> Sldb {
         Sldb {
-            songlengths: HashMap::<String, (String, Vec<i32>)>::new()
+            songlengths: FxHashMap::with_capacity_and_hasher(MIN_ENTRIES_CAPACITY, Default::default())
         }
     }
 
     pub fn get_song_length(&self, md5_hash: &str, sub_tune: i32) -> Option<i32> {
         self.songlengths.get(md5_hash)
-            .and_then(|(_filename, sldb_entry)| sldb_entry.get(sub_tune as usize).copied())
+            .and_then(|(_, sldb_entry)| sldb_entry.split_whitespace().nth(sub_tune as usize))
+            .map(|length| {
+                let stripped_length = Self::strip_indicators(length);
+                Self::convert_time_to_millis(stripped_length)
+            })
     }
 
     pub fn get_hvsc_filename(&self, md5_hash: &str) -> Option<String> {
         self.songlengths.get(md5_hash)
-            .map(|(filename, _sldb_entry)| filename.to_string())
+            .map(|(filename, _)| filename.to_string())
     }
 
     pub fn load(&mut self, hvsc_path: &str) -> Result<(), String> {
@@ -58,7 +63,7 @@ impl Sldb {
     {
         Self::validate_file_format(text_lines)?;
 
-        let mut song_lengths: Vec<i32> = Vec::with_capacity(MAX_SUB_SONGS);
+        let mut song_lengths= "".to_string();
         let mut md5_hash = "".to_string();
         let mut hvsc_filename = "".to_string();
 
@@ -69,11 +74,11 @@ impl Sldb {
             self.process_line(&mut song_lengths, &mut md5_hash, &mut hvsc_filename, line);
         }
 
-        self.add_sldb_entry(&mut hvsc_filename, &mut song_lengths, &mut md5_hash);
+        self.add_sldb_entry(&hvsc_filename, &song_lengths, &md5_hash);
         Ok(())
     }
 
-    fn process_line(&mut self, song_lengths: &mut Vec<i32>, md5_hash: &mut String, hvsc_filename: &mut String, line: String) {
+    fn process_line(&mut self, song_lengths: &mut String, md5_hash: &mut String, hvsc_filename: &mut String, line: String) {
         let sldb_text = line.trim();
         let first_char = sldb_text.chars().next().unwrap_or('#');
 
@@ -87,20 +92,15 @@ impl Sldb {
             _ => {
                 if let Some((hash, lengths)) = sldb_text.split_once('=') {
                     *md5_hash = hash.to_string();
-
-                    for song_length in lengths.split_whitespace() {
-                        let song_length = Self::strip_indicators(song_length);
-                        let song_length_in_millis = Self::convert_time_to_millis(song_length);
-                        song_lengths.push(song_length_in_millis);
-                    }
+                    *song_lengths = lengths.to_string();
                 }
             }
         }
     }
 
-    fn add_sldb_entry(&mut self, hvsc_filename: &mut String, song_lengths: &mut Vec<i32>, md5_hash: &mut String) {
+    fn add_sldb_entry(&mut self, hvsc_filename: &String, song_lengths: &String, md5_hash: &String) {
         if !song_lengths.is_empty() {
-            self.songlengths.insert(md5_hash.to_string(), (hvsc_filename.to_string(), song_lengths.to_vec()));
+            self.songlengths.insert(md5_hash.to_string(), (hvsc_filename.to_string(), song_lengths.to_string()));
         }
     }
 

@@ -2,10 +2,11 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #![allow(dead_code)]
-use std::collections::HashMap;
 use std::io::Error;
 use std::path::Path;
+
 use crate::utils::file;
+use fxhash::FxHashMap;
 
 const DOCUMENTS_FOLDER: &str = "DOCUMENTS";
 const STIL_FILE_NAME: &str = "STIL.txt";
@@ -16,15 +17,15 @@ const MIN_STIL_ENTRIES_CAPACITY: usize = 20_000;
 const MIN_GLOBAL_ENTRIES_CAPACITY: usize = 300;
 
 pub struct Stil {
-    pub stil_info: HashMap<String, String>,
-    pub global_comments: HashMap<String, String>,
+    pub stil_info: FxHashMap<String, String>,
+    pub global_comments: FxHashMap<String, String>,
 }
 
 impl Stil {
     pub fn new() -> Stil {
         Stil {
-            stil_info: HashMap::<String, String>::with_capacity(MIN_STIL_ENTRIES_CAPACITY),
-            global_comments: HashMap::<String, String>::with_capacity(MIN_GLOBAL_ENTRIES_CAPACITY),
+            stil_info: FxHashMap::with_capacity_and_hasher(MIN_STIL_ENTRIES_CAPACITY, Default::default()),
+            global_comments: FxHashMap::with_capacity_and_hasher(MIN_GLOBAL_ENTRIES_CAPACITY, Default::default())
         }
     }
 
@@ -32,15 +33,11 @@ impl Stil {
         let sid_file_name = sid_file_name.to_ascii_lowercase();
         let global_entries = self.get_global_entries(&sid_file_name);
 
-        if let Some(stil_entry) = self.stil_info.get(&sid_file_name) {
-            if let Some(global_entries) = global_entries {
-                Some(global_entries + "\n" + stil_entry)
-            } else {
-                Some(stil_entry.to_string())
-            }
-        } else {
-            global_entries
-        }
+        self.stil_info.get(&sid_file_name)
+            .map(|stil_entry| {
+                global_entries.as_ref()
+                    .map_or(stil_entry.to_string(), |global_lines| global_lines.to_owned() + "\n" + stil_entry)
+            }).or(global_entries)
     }
 
     pub fn load(&mut self, hvsc_path: &str) -> Result<(), String> {
@@ -85,7 +82,7 @@ impl Stil {
             let line = line.map_err(|error| format!("Error reading STIL file -> {}", error))?;
             self.process_line(&mut stil_entry, &mut stil_filename, &mut global, line);
         }
-        self.add_stil_entry(&mut stil_filename, &mut stil_entry, global);
+        self.add_stil_entry(&stil_filename, &stil_entry, global);
         Ok(())
     }
 
@@ -108,7 +105,7 @@ impl Stil {
         }
     }
 
-    fn add_stil_entry(&mut self, stil_filename: &mut String, stil_entry: &mut Vec<String>, global: bool) {
+    fn add_stil_entry(&mut self, stil_filename: &String, stil_entry: &Vec<String>, global: bool) {
         if !stil_entry.is_empty() {
             if global {
                 self.global_comments
