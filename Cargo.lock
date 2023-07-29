@@ -13,6 +13,7 @@ dependencies = [
  "encoding",
  "encoding_rs",
  "encoding_rs_io",
+ "fxhash",
  "if-addrs",
  "libftd2xx",
  "libloading",
@@ -91,6 +92,12 @@ name = "bumpalo"
 version = "3.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3e2c3daef883ecc1b5d58c15adae93470a91d425f3532ba1695849656af3fc1"
+
+[[package]]
+name = "byteorder"
+version = "1.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "bytes"
@@ -331,6 +338,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa7cfcda69930a8d2fdcdd7ffb9234fe4c79a8c73934ed4904327d77bfb5078a"
 dependencies = [
  "static_assertions",
+]
+
+[[package]]
+name = "fxhash"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]
@@ -812,9 +828,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.177"
+version = "1.0.178"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63ba2516aa6bf82e0b19ca8b50019d52df58455d3cf9bdaf6315225fdd0c560a"
+checksum = "60363bdd39a7be0266a520dab25fdc9241d2f987b08a01e01f0ec6d06a981348"
 
 [[package]]
 name = "signal-hook"
