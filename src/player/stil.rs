@@ -17,8 +17,8 @@ const MIN_STIL_ENTRIES_CAPACITY: usize = 20_000;
 const MIN_GLOBAL_ENTRIES_CAPACITY: usize = 300;
 
 pub struct Stil {
-    pub stil_info: FxHashMap<String, String>,
-    pub global_comments: FxHashMap<String, String>,
+    stil_info: FxHashMap<String, String>,
+    global_comments: FxHashMap<String, String>,
 }
 
 impl Stil {
