@@ -15,13 +15,15 @@ const MAX_SLDB_FILE_SIZE: u64 = 1024 * 1024 * 1024;
 const MIN_ENTRIES_CAPACITY: usize = 80_000;
 
 pub struct Sldb {
-    pub songlengths: FxHashMap<String, (String, String)>
+    songlengths: FxHashMap<String, (String, String)>,
+    new_md5_hash_used: bool
 }
 
 impl Sldb {
     pub fn new() -> Sldb {
         Sldb {
-            songlengths: FxHashMap::with_capacity_and_hasher(MIN_ENTRIES_CAPACITY, Default::default())
+            songlengths: FxHashMap::with_capacity_and_hasher(MIN_ENTRIES_CAPACITY, Default::default()),
+            new_md5_hash_used: true
         }
     }
 
@@ -39,13 +41,20 @@ impl Sldb {
             .map(|(filename, _)| filename.to_string())
     }
 
+    pub fn is_new_md5_hash_used(&self) -> bool {
+        self.new_md5_hash_used
+    }
+
     pub fn load(&mut self, hvsc_path: &str) -> Result<(), String> {
+        self.new_md5_hash_used = true;
+
         let mut sldb_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(NEW_SLDB_FILE_NAME);
         if !sldb_file.exists() {
             sldb_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(OLD_SLDB_FILE_NAME);
             if !sldb_file.exists() {
                 return Err(format!("Songlengths file not found in: {}", hvsc_path));
             }
+            self.new_md5_hash_used = false;
         }
 
         let mut lines = file::read_text_file_as_lines(&sldb_file, Some(MAX_SLDB_FILE_SIZE))?;

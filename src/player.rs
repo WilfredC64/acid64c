@@ -683,7 +683,12 @@ impl Player
             Err(format!("File '{filename}' could not be loaded."))
         } else {
             self.filename = Some(filename.to_string());
-            self.md5_hash = self.acid64_lib.get_md5_hash(self.c64_instance);
+
+            if self.sldb.is_new_md5_hash_used() {
+                self.md5_hash = self.acid64_lib.get_md5_hash(self.c64_instance);
+            } else {
+                self.md5_hash = self.acid64_lib.get_ancient_md5_hash(self.c64_instance);
+            }
 
             self.init_devices()?;
             self.configure_sid_device(false)?;

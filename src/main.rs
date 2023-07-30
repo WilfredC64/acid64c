@@ -52,11 +52,11 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
+    player.setup_sldb_and_stil(config.hvsc_location, config.display_stil)?;
     player.load_file(&config.filename)?;
     if config.song_number != -1 {
         player.set_song_to_play(config.song_number)?;
     }
-    player.setup_sldb_and_stil(config.hvsc_location, config.display_stil)?;
 
     let version = player.get_library_version();
     if version < 0x210 {
