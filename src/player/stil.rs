@@ -80,13 +80,13 @@ impl Stil {
 
         for line in text_lines {
             let line = line.map_err(|error| format!("Error reading STIL file -> {}", error))?;
-            self.process_line(&mut stil_entry, &mut stil_filename, &mut global, line);
+            self.process_line(&line, &mut stil_entry, &mut stil_filename, &mut global);
         }
         self.add_stil_entry(&stil_filename, &stil_entry, global);
         Ok(())
     }
 
-    fn process_line(&mut self, stil_entry: &mut Vec<String>, stil_filename: &mut String, global: &mut bool, line: String) {
+    fn process_line(&mut self, line: &str, stil_entry: &mut Vec<String>, stil_filename: &mut String, global: &mut bool) {
         let stil_text = line.trim_end();
         let first_char = stil_text.chars().next().unwrap_or('#');
 
@@ -100,7 +100,7 @@ impl Stil {
                 *stil_filename = stil_text.to_ascii_lowercase();
             },
             _ => {
-                stil_entry.push(line.clone());
+                stil_entry.push(line.to_string());
             }
         }
     }

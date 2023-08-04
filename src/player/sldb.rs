@@ -46,8 +46,6 @@ impl Sldb {
     }
 
     pub fn load(&mut self, hvsc_path: &str) -> Result<(), String> {
-        self.new_md5_hash_used = true;
-
         let mut sldb_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(NEW_SLDB_FILE_NAME);
         if !sldb_file.exists() {
             sldb_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(OLD_SLDB_FILE_NAME);
@@ -55,6 +53,8 @@ impl Sldb {
                 return Err(format!("Songlengths file not found in: {}", hvsc_path));
             }
             self.new_md5_hash_used = false;
+        } else {
+            self.new_md5_hash_used = true;
         }
 
         let mut lines = file::read_text_file_as_lines(&sldb_file, Some(MAX_SLDB_FILE_SIZE))?;
@@ -80,14 +80,14 @@ impl Sldb {
 
         for line in text_lines {
             let line = line.map_err(|error| format!("Error reading SLDB file -> {}", error))?;
-            self.process_line(&mut song_lengths, &mut md5_hash, &mut hvsc_filename, line);
+            self.process_line(&line, &mut song_lengths, &mut md5_hash, &mut hvsc_filename);
         }
 
         self.add_sldb_entry(&hvsc_filename, &song_lengths, &md5_hash);
         Ok(())
     }
 
-    fn process_line(&mut self, song_lengths: &mut String, md5_hash: &mut String, hvsc_filename: &mut String, line: String) {
+    fn process_line(&mut self, line: &str, song_lengths: &mut String, md5_hash: &mut String, hvsc_filename: &mut String) {
         let sldb_text = line.trim();
         let first_char = sldb_text.chars().next().unwrap_or('#');
 
