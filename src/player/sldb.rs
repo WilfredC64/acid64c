@@ -114,8 +114,8 @@ impl Sldb {
     }
 
     fn validate_file_format<T>(text_lines: &mut T) -> Result<(), String>
-        where
-            T: Iterator<Item = Result<String, Error>>
+    where
+        T: Iterator<Item = Result<String, Error>>
     {
         const MAX_LINES_TO_VALIDATE: usize = 20;
 
