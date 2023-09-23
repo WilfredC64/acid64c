@@ -28,12 +28,10 @@ impl Sldb {
     }
 
     pub fn get_song_length(&self, md5_hash: &str, sub_tune: i32) -> Option<i32> {
-        self.songlengths.get(md5_hash)
-            .and_then(|(_, sldb_entry)| sldb_entry.split_whitespace().nth(sub_tune as usize))
-            .map(|length| {
-                let stripped_length = Self::strip_indicators(length);
-                Self::convert_time_to_millis(stripped_length)
-            })
+        let (_, sldb_entry) = self.songlengths.get(md5_hash)?;
+        let sub_tune_length = sldb_entry.split_whitespace().nth(sub_tune as usize)?;
+        let stripped_length = Self::strip_indicators(sub_tune_length);
+        Some(Self::convert_time_to_millis(stripped_length))
     }
 
     pub fn get_hvsc_filename(&self, md5_hash: &str) -> Option<String> {
