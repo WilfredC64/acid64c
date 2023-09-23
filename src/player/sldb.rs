@@ -3,7 +3,7 @@
 
 #![allow(dead_code)]
 use std::io::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::utils::file;
 use fxhash::FxHashMap;
@@ -43,17 +43,13 @@ impl Sldb {
         self.new_md5_hash_used
     }
 
-    pub fn load(&mut self, hvsc_path: &str) -> Result<(), String> {
-        let mut sldb_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(NEW_SLDB_FILE_NAME);
-        if !sldb_file.exists() {
-            sldb_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(OLD_SLDB_FILE_NAME);
-            if !sldb_file.exists() {
-                return Err(format!("Songlengths file not found in: {}", hvsc_path));
-            }
-            self.new_md5_hash_used = false;
-        } else {
-            self.new_md5_hash_used = true;
+    pub fn load(&mut self, hvsc_path_or_sldb_file: &str) -> Result<(), String> {
+        let mut sldb_file = PathBuf::from(hvsc_path_or_sldb_file);
+        if !sldb_file.is_file() {
+            sldb_file = Self::find_song_length_file(&sldb_file)?;
         }
+
+        self.new_md5_hash_used = sldb_file.extension().unwrap_or("md5".as_ref()) == "md5";
 
         let mut lines = file::read_text_file_as_lines(&sldb_file, Some(MAX_SLDB_FILE_SIZE))?;
         self.process_lines(&mut lines)
@@ -103,6 +99,18 @@ impl Sldb {
                 }
             }
         }
+    }
+
+    fn find_song_length_file(hvsc_path: &Path) -> Result<PathBuf, String> {
+        for &file_name in &[NEW_SLDB_FILE_NAME, OLD_SLDB_FILE_NAME] {
+            for &folder in &[DOCUMENTS_FOLDER, ""] {
+                let sldb_file = hvsc_path.join(folder).join(file_name);
+                if sldb_file.exists() {
+                    return Ok(sldb_file);
+                }
+            }
+        }
+        Err(format!("Songlengths file not found in: {}", hvsc_path.to_string_lossy()))
     }
 
     fn add_sldb_entry(&mut self, hvsc_filename: &String, song_lengths: &String, md5_hash: &String) {
