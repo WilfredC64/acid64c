@@ -3,7 +3,7 @@
 
 #![allow(dead_code)]
 use std::io::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::utils::file;
 use fxhash::FxHashMap;
@@ -40,11 +40,13 @@ impl Stil {
             }).or(global_entries)
     }
 
-    pub fn load(&mut self, hvsc_path: &str) -> Result<(), String> {
-        let stil_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(STIL_FILE_NAME);
-        if !stil_file.exists() {
-            return Err(format!("STIL file not found: {}", stil_file.display()));
-        }
+    pub fn load(&mut self, hvsc_path_or_stil_file: &str) -> Result<(), String> {
+        let hvsc_path = PathBuf::from(hvsc_path_or_stil_file);
+        let stil_file = if !hvsc_path.is_file() {
+            Self::find_stil_file(&hvsc_path, STIL_FILE_NAME)?
+        } else {
+            hvsc_path.to_path_buf()
+        };
 
         self.stil_info.clear();
         self.global_comments.clear();
@@ -52,10 +54,12 @@ impl Stil {
         let mut lines = file::read_text_file_as_lines(&stil_file, Some(MAX_STIL_FILE_SIZE))?;
         self.process_lines(&mut lines)?;
 
-        let bug_list_file = Path::new(hvsc_path).join(DOCUMENTS_FOLDER).join(BUG_LIST_FILE_NAME);
-        if bug_list_file.exists() {
-            let mut lines = file::read_text_file_as_lines(&bug_list_file, Some(MAX_STIL_FILE_SIZE))?;
-            self.process_lines(&mut lines)?;
+        if !hvsc_path.is_file() {
+            let bug_list_file = Self::find_stil_file(&hvsc_path, BUG_LIST_FILE_NAME);
+            if let Ok(bug_list_file) = bug_list_file {
+                let mut lines = file::read_text_file_as_lines(&bug_list_file, Some(MAX_STIL_FILE_SIZE))?;
+                self.process_lines(&mut lines)?;
+            }
         }
         Ok(())
     }
@@ -103,6 +107,16 @@ impl Stil {
                 stil_entry.push(line.to_string());
             }
         }
+    }
+
+    fn find_stil_file(hvsc_path: &Path, filename: &str) -> Result<PathBuf, String> {
+        for &folder in &[DOCUMENTS_FOLDER, ""] {
+            let stil_file = hvsc_path.join(folder).join(filename);
+            if stil_file.exists() {
+                return Ok(stil_file);
+            }
+        }
+        Err(format!("STIL file not found in: {}", hvsc_path.to_string_lossy()))
     }
 
     fn add_stil_entry(&mut self, stil_filename: &String, stil_entry: &Vec<String>, global: bool) {
