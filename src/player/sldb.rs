@@ -2,9 +2,7 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #![allow(dead_code)]
-
-use std::io;
-use std::io::Error;
+use std::io::{self, Error};
 use std::path::{Path, PathBuf};
 
 use crate::utils::file;
