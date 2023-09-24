@@ -2,6 +2,8 @@
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 #![allow(dead_code)]
+
+use std::io;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 
@@ -44,20 +46,33 @@ impl Sldb {
     }
 
     pub fn load(&mut self, hvsc_path_or_sldb_file: &str) -> Result<(), String> {
-        let mut sldb_file = PathBuf::from(hvsc_path_or_sldb_file);
-        if !sldb_file.is_file() {
-            sldb_file = Self::find_song_length_file(&sldb_file)?;
-        }
-
-        self.new_md5_hash_used = sldb_file.extension().unwrap_or("md5".as_ref()) == "md5";
-
-        let mut lines = file::read_text_file_as_lines(&sldb_file, Some(MAX_SLDB_FILE_SIZE))?;
+        let mut lines = self.get_sldb_lines(hvsc_path_or_sldb_file)?;
         self.process_lines(&mut lines)
     }
 
     pub fn load_from_buffer(&mut self, buffer: &[u8]) -> Result<(), String> {
         let mut lines = file::read_buffer_as_lines(buffer);
         self.process_lines(&mut lines)
+    }
+
+    pub fn validate(&mut self, hvsc_path_or_sldb_file: &str) -> Result<(), String> {
+        let mut lines = self.get_sldb_lines(hvsc_path_or_sldb_file)?;
+        Self::validate_file_format(&mut lines)
+    }
+
+    pub fn validate_from_buffer(&mut self, buffer: &[u8]) -> Result<(), String> {
+        let mut lines = file::read_buffer_as_lines(buffer);
+        Self::validate_file_format(&mut lines)
+    }
+
+    fn get_sldb_lines(&mut self, hvsc_path_or_sldb_file: &str) -> Result<impl Iterator<Item = io::Result<String>>, String> {
+        let mut sldb_file = PathBuf::from(hvsc_path_or_sldb_file);
+        if !sldb_file.is_file() {
+            sldb_file = Self::find_song_length_file(&sldb_file)?;
+        }
+
+        self.new_md5_hash_used = sldb_file.extension().unwrap_or("md5".as_ref()) == "md5";
+        file::read_text_file_as_lines(&sldb_file, Some(MAX_SLDB_FILE_SIZE))
     }
 
     fn process_lines<T>(&mut self, text_lines: &mut T) -> Result<(), String>
