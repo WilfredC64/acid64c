@@ -11,9 +11,9 @@ build = "build.rs"
 
 [dependencies]
 atomicring = "1.2.9"
-attohttpc = { version = "0.25", features = ["multipart-form"] }
+attohttpc = { version = "0.26", features = ["multipart-form"] }
 chrono = "0.4"
-crossterm = "0.26"
+crossterm = "0.27"
 encoding = "0.2"
 encoding_rs = "0.8.33"
 encoding_rs_io = "0.1.7"
@@ -22,7 +22,7 @@ if-addrs = "0.10"
 libloading = "0.8"
 parking_lot = "0.12"
 timer = "0.2"
-thread-priority = "0.13.1"
+thread-priority = "0.15.0"
 
 [dependencies.libftd2xx]
 version = "0.32.2"
