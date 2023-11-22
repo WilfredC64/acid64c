@@ -6,7 +6,7 @@ use std::io::Error;
 use std::path::{Path, PathBuf};
 
 use crate::utils::file;
-use fxhash::FxHashMap;
+use ahash::AHashMap;
 
 const DOCUMENTS_FOLDER: &str = "DOCUMENTS";
 const STIL_FILE_NAME: &str = "STIL.txt";
@@ -17,15 +17,15 @@ const MIN_STIL_ENTRIES_CAPACITY: usize = 20_000;
 const MIN_GLOBAL_ENTRIES_CAPACITY: usize = 300;
 
 pub struct Stil {
-    stil_info: FxHashMap<String, String>,
-    global_comments: FxHashMap<String, String>,
+    stil_info: AHashMap<String, String>,
+    global_comments: AHashMap<String, String>,
 }
 
 impl Stil {
     pub fn new() -> Stil {
         Stil {
-            stil_info: FxHashMap::with_capacity_and_hasher(MIN_STIL_ENTRIES_CAPACITY, Default::default()),
-            global_comments: FxHashMap::with_capacity_and_hasher(MIN_GLOBAL_ENTRIES_CAPACITY, Default::default())
+            stil_info: AHashMap::with_capacity(MIN_STIL_ENTRIES_CAPACITY),
+            global_comments: AHashMap::with_capacity(MIN_GLOBAL_ENTRIES_CAPACITY)
         }
     }
 

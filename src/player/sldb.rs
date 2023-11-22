@@ -6,7 +6,7 @@ use std::io::{self, Error};
 use std::path::{Path, PathBuf};
 
 use crate::utils::file;
-use fxhash::FxHashMap;
+use ahash::AHashMap;
 
 const DOCUMENTS_FOLDER: &str = "DOCUMENTS";
 const OLD_SLDB_FILE_NAME: &str = "Songlengths.txt";
@@ -15,14 +15,14 @@ const MAX_SLDB_FILE_SIZE: u64 = 1024 * 1024 * 1024;
 const MIN_ENTRIES_CAPACITY: usize = 80_000;
 
 pub struct Sldb {
-    songlengths: FxHashMap<String, (String, String)>,
+    songlengths: AHashMap<String, (String, String)>,
     new_md5_hash_used: bool
 }
 
 impl Sldb {
     pub fn new() -> Sldb {
         Sldb {
-            songlengths: FxHashMap::with_capacity_and_hasher(MIN_ENTRIES_CAPACITY, Default::default()),
+            songlengths: AHashMap::with_capacity(MIN_ENTRIES_CAPACITY),
             new_md5_hash_used: true
         }
     }
