@@ -119,7 +119,7 @@ impl Stil {
         Err(format!("STIL file not found in: {}", hvsc_path.to_string_lossy()))
     }
 
-    fn add_stil_entry(&mut self, stil_filename: &String, stil_entry: &Vec<String>, global: bool) {
+    fn add_stil_entry(&mut self, stil_filename: &String, stil_entry: &[String], global: bool) {
         if !stil_entry.is_empty() {
             if global {
                 self.global_comments
