@@ -10,6 +10,7 @@ fn main() {
     }
 
     copy_acid64pro_library_to_build_folder();
+    println!("cargo:rerun-if-changed=library/");
 }
 
 fn copy_acid64pro_library_to_build_folder() {
