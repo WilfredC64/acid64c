@@ -7,8 +7,8 @@ use std::path::Path;
 use std::time::Instant;
 use attohttpc::{Error, Multipart, MultipartBuilder, MultipartFile, Response};
 
-use crate::utils::{sid_file, network};
-
+use crate::utils::network;
+use crate::utils::sid_file::{is_sid_file, FLAG_8580, FLAG_BUILTIN_MUS_PLAYER, FLAG_NTSC, SID_DEFAULT_SONG_OFFSET, SID_FILE_FORMAT_VERSION_OFFSET, SID_FLAGS_OFFSET, SID_HEADER_SIZE, SID_HEADER_SIZE_OFFSET, SID_SONG_COUNT_OFFSET, SID_TITLE_OFFSET};
 use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, SamplingMethod, SidClock, SidDevice, SidModel};
 
 const TOTAL_TIMEOUT: u64 = 5000;
@@ -333,29 +333,26 @@ impl UltimateDevice {
         let filename = Path::new(filename).file_name().unwrap().to_str().unwrap();
 
         if filename.ends_with(".mus") || filename.ends_with(".str") {
-            let mut psid_header = [0; 0x7c];
-            psid_header[0x00] = b'P';
-            psid_header[0x01] = b'S';
-            psid_header[0x02] = b'I';
-            psid_header[0x03] = b'D';
-            psid_header[0x05] = 0x02;
-            psid_header[0x07] = 0x7c;
-            psid_header[0x0f] = 0x01;
-            psid_header[0x11] = 0x01;
-            psid_header[0x77] = 0x29;
+            let mut psid_header = [0; SID_HEADER_SIZE];
+            psid_header[0..4].copy_from_slice(b"PSID");
+            psid_header[SID_FILE_FORMAT_VERSION_OFFSET] = 0x02;
+            psid_header[SID_HEADER_SIZE_OFFSET] = SID_HEADER_SIZE as u8;
+            psid_header[SID_SONG_COUNT_OFFSET] = 0x01;
+            psid_header[SID_DEFAULT_SONG_OFFSET] = 0x01;
+            psid_header[SID_FLAGS_OFFSET] = FLAG_BUILTIN_MUS_PLAYER | FLAG_NTSC | FLAG_8580;
 
             let filename_only = filename.split('.').next().unwrap().to_string();
 
             for (i, char) in filename_only.as_bytes().iter().enumerate() {
                 if *char == b'_' {
-                    psid_header[0x16 + i] = b' ';
+                    psid_header[SID_TITLE_OFFSET + i] = b' ';
                 } else {
-                    psid_header[0x16 + i] = *char;
+                    psid_header[SID_TITLE_OFFSET + i] = *char;
                 }
             }
 
             self.send_sid_file(filename, song_number, [psid_header.as_slice(), sid_data].concat().as_slice(), ssl_data);
-        } else if sid_file::is_sid_file(sid_data) {
+        } else if is_sid_file(sid_data) {
             self.send_sid_file(filename, song_number, sid_data, ssl_data);
         } else if filename.ends_with(".prg") {
             let form = MultipartBuilder::new()
