@@ -230,7 +230,9 @@ impl ConsolePlayer {
     fn refresh_info(&mut self, clock: &mut Clock) {
         clock.stop();
         self.print_info();
-        let song_length_in_milli = self.player.lock().get_song_length();
+        let player = self.player.lock();
+        let song_number = player.get_song_number();
+        let song_length_in_milli = player.get_song_length(song_number);
         let clock_display = Self::get_clock_display(song_length_in_milli);
         print!("{clock_display}");
         clock.start();
@@ -247,7 +249,9 @@ impl ConsolePlayer {
     }
 
     fn setup_and_display_clock(&mut self) -> Clock {
-        let song_length_in_milli = self.player.lock().get_song_length();
+        let player = self.player.lock();
+        let song_number = player.get_song_number();
+        let song_length_in_milli = player.get_song_length(song_number);
         let clock_display = ConsolePlayer::get_clock_display(song_length_in_milli);
         print!("{clock_display}");
 

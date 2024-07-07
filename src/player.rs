@@ -470,7 +470,7 @@ impl Player
         let mut song_lengths_in_millis = vec![];
         for song_number in 0..self.get_number_of_songs() {
             self.acid64_lib.set_song_to_play(self.c64_instance, song_number);
-            song_lengths_in_millis.push(self.get_song_length());
+            song_lengths_in_millis.push(self.get_song_length(song_number));
         }
 
         self.acid64_lib.set_song_to_play(self.c64_instance, self.song_number);
@@ -574,8 +574,8 @@ impl Player
         Arc::clone(&self.output)
     }
 
-    pub fn get_song_length(&self) -> i32 {
-        self.sldb.get_song_length(&self.md5_hash, self.song_number).unwrap_or(DEFAULT_SONG_LENGTH_IN_MILLIS)
+    pub fn get_song_length(&self, song_number: i32) -> i32 {
+        self.sldb.get_song_length(&self.md5_hash, song_number).unwrap_or(DEFAULT_SONG_LENGTH_IN_MILLIS)
     }
 
     pub fn get_filename(&self) -> Option<String> {
