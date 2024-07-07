@@ -36,6 +36,7 @@ pub enum DeviceId {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct DeviceInfo {
     pub id: String,
     pub name: String
