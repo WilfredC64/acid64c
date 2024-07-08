@@ -13,7 +13,7 @@ use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, SamplingMethod, Si
 
 const TOTAL_TIMEOUT: u64 = 5000;
 const CONNECTION_TIMEOUT: u64 = 500;
-const SOCKET_TIMEOUT: u128 = 100;
+const SOCKET_TIMEOUT: u128 = 200;
 const MAX_DATA_SIZE: usize = 512;
 
 const PAUSE_SID_FILE: &[u8] = include_bytes!("../../resources/acid64_pause.crt");
