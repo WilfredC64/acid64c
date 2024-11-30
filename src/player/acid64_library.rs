@@ -5,7 +5,6 @@ use encoding::{Encoding, DecoderTrap, EncoderTrap};
 use encoding::all::WINDOWS_1252;
 use libloading::{Library, Symbol};
 use std::ffi::{CString, CStr};
-use std::mem;
 
 #[cfg(target_arch = "x86")]
 pub struct Acid64Library {
@@ -398,7 +397,7 @@ impl Acid64Library {
 
     pub fn get_last_sid_write_times(&self, c64_instance: usize, buffer: &mut [u32; 256]) {
         unsafe {
-            (self.a64lib.get(b"getLastSidWriteTimes").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u32, i32)>)(c64_instance, buffer.as_mut_ptr(), mem::size_of_val(buffer) as i32);
+            (self.a64lib.get(b"getLastSidWriteTimes").unwrap() as Symbol<unsafe extern "stdcall" fn(usize, *mut u32, i32)>)(c64_instance, buffer.as_mut_ptr(), size_of_val(buffer) as i32);
         }
     }
 
