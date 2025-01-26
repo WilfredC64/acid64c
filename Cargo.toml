@@ -10,26 +10,26 @@ keywords = ["acid64-player", "sidplayer", "c64-music-player", "sid-6581", "sid-8
 build = "build.rs"
 
 [dependencies]
-ahash = "0.8.11"
-atomicring = "1.2.9"
-attohttpc = { version = "0.28.0", features = ["multipart-form"] }
+ahash = "0.8"
+atomicring = "1.2"
+attohttpc = { version = "0.28", features = ["multipart-form"] }
 chrono = "0.4"
 crossterm = "0.28"
 encoding = "0.2"
-encoding_rs = "0.8.35"
-encoding_rs_io = "0.1.7"
-if-addrs = "0.13.3"
+encoding_rs = "0.8"
+encoding_rs_io = "0.1"
+if-addrs = "0.13"
 libloading = "0.8"
 parking_lot = "0.12"
 timer = "0.2"
-thread-priority = "1.2.0"
+thread-priority = "1.2"
 
 [dependencies.libftd2xx]
-version = "0.33.0"
+version = "0.33"
 features = ["static"]
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58.0", features = [
+windows = { version = "0.59.0", features = [
     "Win32_Media"
 ] }
 
@@ -38,7 +38,7 @@ winres = "0.1"
 
 [package.metadata.winres]
 ProductName = "ACID64 Console Player"
-LegalCopyright = "Copyright © 2003 - 2024 Wilfred Bos"
+LegalCopyright = "Copyright © 2003 - 2025 Wilfred Bos"
 
 [profile.release]
 codegen-units = 1
