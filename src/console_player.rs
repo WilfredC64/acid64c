@@ -1,9 +1,9 @@
-// Copyright (C) 2019 - 2023 Wilfred Bos
+// Copyright (C) 2019 - 2025 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod clock;
 
-use crate::player::{Player, PlayerCommand, ABORT_NO, ABORT_TO_QUIT, ABORT_FOR_COMMAND, PlayerOutput, ABORTED};
+use crate::player::{Player, PlayerCommand, ABORT_NO, ABORT_TO_QUIT, ABORT_FOR_COMMAND, PlayerOutput, SidInfo, ABORTED};
 use crate::utils::keyboard;
 use self::clock::Clock;
 
@@ -17,6 +17,7 @@ use parking_lot::Mutex;
 
 const LOOP_RATE_IN_MS: u64 = 50;
 const FAST_FORWARD_STOP_DELAY_IN_MILLIS: u128 = 600;
+const LOOP_TIME_OUT_MILLIS: u128 = 3000;
 
 pub struct ConsolePlayer {
     player: Arc<Mutex<Player>>,
@@ -24,9 +25,12 @@ pub struct ConsolePlayer {
     display_stil: bool,
     paused: bool,
     abort_type: Arc<AtomicI32>,
+    sid_loaded: Arc<AtomicBool>,
     fast_forward_in_progress: Arc<AtomicBool>,
     last_fast_forward: Arc<Mutex<Instant>>,
     player_output: Arc<Mutex<PlayerOutput>>,
+    sid_info: Arc<Mutex<SidInfo>>,
+    device_names: Arc<Mutex<Vec<String>>>
 }
 
 impl ConsolePlayer {
@@ -37,7 +41,10 @@ impl ConsolePlayer {
         let player_cmd_sender = player.get_channel_sender();
         let player_arc = Arc::new(Mutex::new(player));
         let player_output = player_arc.lock().get_player_output();
+        let sid_info = player_arc.lock().get_sid_info_ref();
         let abort_type = player_arc.lock().get_aborted_ref();
+        let sid_loaded = player_arc.lock().get_sid_loaded_ref();
+        let device_names = player_arc.lock().get_device_names();
 
         ConsolePlayer {
             player: player_arc,
@@ -45,23 +52,36 @@ impl ConsolePlayer {
             display_stil,
             paused: false,
             abort_type,
+            sid_loaded,
             fast_forward_in_progress,
             last_fast_forward,
-            player_output
+            player_output,
+            sid_info,
+            device_names
         }
     }
 
     pub fn play(&mut self) -> Result<(), String> {
-        self.print_info();
-
-        let mut clock = self.setup_and_display_clock();
-        clock.start();
-
-        let remote_sidplayer_active = self.player.lock().has_remote_sidplayer();
-        let number_of_tunes = self.player.lock().get_number_of_songs();
+        let mut clock = Clock::new();
         let mut player_thread = self.start_player(&mut clock);
 
+        let last_error = self.get_last_error();
+        if let Some(last_error) = last_error {
+            self.abort_type.store(ABORTED, Ordering::SeqCst);
+            return Err(last_error);
+        }
+
+        let remote_sidplayer_active = self.player_output.lock().has_remote_sidplayer;
+
+        self.print_info();
+
+        let song_length = self.sid_info.lock().song_length;
+        self.display_clock(&mut clock, song_length);
+        clock.start();
+
+        let number_of_tunes = self.sid_info.lock().number_of_songs;
         self.paused = false;
+
         loop {
             if let Some(key) = keyboard::get_char_from_input() {
                 match key {
@@ -71,11 +91,10 @@ impl ConsolePlayer {
                         clock.pause(self.paused);
 
                         if !self.paused {
-                            let player_output = self.get_player_output();
                             if remote_sidplayer_active {
                                 clock.set_clock(0);
                             } else {
-                                clock.set_clock(player_output.time as usize);
+                                clock.set_clock(self.player_output.lock().time as usize);
                             }
                         }
                     },
@@ -91,9 +110,18 @@ impl ConsolePlayer {
                                 _ => song_number
                             };
 
-                            self.player.lock().set_song_to_play(song_number)?;
-                            self.refresh_info(&mut clock);
+                            let old_song_number = self.player_output.lock().song_number;
+
+                            self.player.lock().set_song_to_play(song_number);
                             player_thread = self.start_player(&mut clock);
+
+                            clock.stop();
+                            if old_song_number != song_number {
+                                self.refresh_info();
+                            }
+                            clock.start();
+
+                            keyboard::flush_keyboard_buffer();
                         }
                     },
                     keyboard::RIGHT_KEY => {
@@ -114,8 +142,7 @@ impl ConsolePlayer {
             }
 
             if self.fast_forward_in_progress.load(Ordering::SeqCst) {
-                let player_output = self.get_player_output();
-                clock.set_clock(player_output.time as usize);
+                clock.set_clock(self.player_output.lock().time as usize);
             }
 
             clock.refresh_clock();
@@ -132,14 +159,14 @@ impl ConsolePlayer {
 
         let last_error = self.player.lock().get_last_error();
         if let Some(last_error) = last_error {
-            println!("\n\nERROR: {last_error}\nExiting!");
+            return Err(format!("{last_error}\nExiting!"));
         }
 
         Ok(())
     }
 
-    fn get_player_output(&mut self) -> PlayerOutput {
-        *self.player_output.lock()
+    fn get_last_error(&self) -> Option<String> {
+        self.player_output.lock().last_error.clone()
     }
 
     fn pause_or_resume_player(&mut self) {
@@ -186,8 +213,7 @@ impl ConsolePlayer {
             }
             self.fast_forward_in_progress.store(false, Ordering::SeqCst);
 
-            let player_output = self.get_player_output();
-            clock.set_clock(player_output.time as usize);
+            clock.set_clock(self.player_output.lock().time as usize);
         }
     }
 
@@ -215,11 +241,31 @@ impl ConsolePlayer {
         self.disable_fast_forward(clock);
 
         self.abort_type.store(ABORT_NO, Ordering::SeqCst);
+        self.sid_loaded.store(false, Ordering::SeqCst);
 
         let player_clone = Arc::clone(&self.player);
-        thread::spawn(move || {
+        let player_thread = thread::spawn(move || {
             player_clone.lock().play();
-        })
+        });
+
+        if let Err(e) = self.wait_until_sid_is_loaded() {
+            self.player_output.lock().last_error = Some(e);
+            self.abort_type.store(ABORTED, Ordering::SeqCst);
+        }
+
+        player_thread
+    }
+
+    fn wait_until_sid_is_loaded(&mut self) -> Result<(), String> {
+        let start_time = Instant::now();
+        while !self.sid_loaded.load(Ordering::SeqCst) && !self.is_aborted() {
+            thread::sleep(Duration::from_millis(LOOP_RATE_IN_MS));
+
+            if start_time.elapsed().as_millis() > LOOP_TIME_OUT_MILLIS {
+                return Err("Timeout while loading SID file".to_string());
+            }
+        }
+        Ok(())
     }
 
     fn is_aborted(&self) -> bool {
@@ -227,15 +273,12 @@ impl ConsolePlayer {
         abort_type != ABORT_NO
     }
 
-    fn refresh_info(&mut self, clock: &mut Clock) {
-        clock.stop();
+    fn refresh_info(&mut self) {
+        println!();
         self.print_info();
-        let player = self.player.lock();
-        let song_number = player.get_song_number();
-        let song_length_in_milli = player.get_song_length(song_number);
+        let song_length_in_milli = self.sid_info.lock().song_length;
         let clock_display = Self::get_clock_display(song_length_in_milli);
         print!("{clock_display}");
-        clock.start();
     }
 
     fn send_command(&mut self, command: PlayerCommand) {
@@ -248,16 +291,10 @@ impl ConsolePlayer {
         Clock::convert_seconds_to_time_string(song_length_in_seconds as u32, false)
     }
 
-    fn setup_and_display_clock(&mut self) -> Clock {
-        let player = self.player.lock();
-        let song_number = player.get_song_number();
-        let song_length_in_milli = player.get_song_length(song_number);
+    fn display_clock(&mut self, clock: &mut Clock, song_length_in_milli: i32) {
         let clock_display = ConsolePlayer::get_clock_display(song_length_in_milli);
-        print!("{clock_display}");
-
-        let mut clock = Clock::new();
         clock.set_clock_display_length(clock_display.len() - 1);
-        clock
+        print!("{clock_display}");
     }
 
     fn get_clock_display(song_length_in_milli: i32) -> String {
@@ -280,15 +317,13 @@ impl ConsolePlayer {
     }
 
     fn print_filename(&mut self) {
-        let filename = self.player.lock().get_filename();
-        if let Some(filename) = filename {
-            let path = Path::new(&filename);
-            println!("\nFile            : {}", path.file_name().unwrap().to_str().unwrap());
-        }
+        let filename = self.sid_info.lock().filename.clone();
+        let path = Path::new(&filename);
+        println!("\nFile            : {}", path.file_name().unwrap().to_str().unwrap());
     }
 
     fn print_sid_model(&mut self) {
-        let sid_model = self.player.lock().get_sid_model();
+        let sid_model = self.sid_info.lock().sid_models[0];
         let sid_model_display = match sid_model {
             1 => "MOS 6581",
             2 => "MOS 8580",
@@ -299,7 +334,7 @@ impl ConsolePlayer {
     }
 
     fn print_c64_model(&mut self) {
-        let c64_model = self.player.lock().get_c64_version();
+        let c64_model = self.sid_info.lock().clock_frequency;
         let c64_model_display = match c64_model {
             1 => "PAL",
             2 => "NTSC",
@@ -310,10 +345,10 @@ impl ConsolePlayer {
     }
 
     fn print_sid_description(&mut self) {
-        let player = self.player.lock();
-        let title = player.get_title();
-        let author = player.get_author();
-        let released = player.get_released();
+        let sid_info = self.sid_info.lock();
+        let title = sid_info.title.to_string();
+        let author = sid_info.author.to_string();
+        let released = sid_info.released.to_string();
 
         if (title.len() > 32) && author.is_empty() && released.is_empty() {
             println!("\n       Sidplayer 64 info");
@@ -328,31 +363,29 @@ impl ConsolePlayer {
 
     fn print_stil_info(&mut self) {
         if self.display_stil {
-            let stil_entry = self.player.lock().get_stil_entry();
-            if stil_entry.is_some() {
+            let sid_info = self.sid_info.lock();
+            if let Some(stil_entry) = &sid_info.stil_entry {
                 println!("\nSTIL Info");
-                println!("---------\n{}", stil_entry.unwrap());
+                println!("---------\n{}", stil_entry);
             }
         }
     }
 
     fn print_device_info(&mut self) {
-        let mut player= self.player.lock();
-        let device_numbers = player.get_device_numbers();
-        let song_number = player.get_song_number();
-        let number_of_songs = player.get_number_of_songs();
-        let number_of_sids = player.get_number_of_sids();
+        let sid_info= self.sid_info.lock();
+        let player_output = self.player_output.lock();
+        let number_of_songs = sid_info.number_of_songs;
+        let number_of_sids = sid_info.number_of_sids;
+        let song_number = player_output.song_number;
+        let device_number = player_output.device_number;
 
         if number_of_sids > 1 {
             println!("\nPlaying song {} of {} on devices:", song_number + 1, number_of_songs);
             for i in 0..number_of_sids {
-                let device_info = player.get_device_info(device_numbers[i as usize]);
-                println!("SID {} -> {:>2}: {}", i + 1, device_numbers[i as usize] + 1, device_info);
+                println!("SID {} -> {:>2}: {}", i + 1, device_number + 1, self.device_names.lock()[device_number as usize]);
             }
-
         } else {
-            let device_info = player.get_device_info(device_numbers[0]);
-            println!("\nPlaying song {} of {} on device {}: {}", song_number + 1, number_of_songs, device_numbers[0] + 1, device_info);
+            println!("\nPlaying song {} of {} on device {}: {}", song_number + 1, number_of_songs, device_number + 1, self.device_names.lock()[device_number as usize]);
         }
     }
 }

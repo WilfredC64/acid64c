@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2023 Wilfred Bos
+// Copyright (C) 2019 - 2025 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 pub mod sid_device;
@@ -12,6 +12,7 @@ mod sidblaster_usb_device;
 mod sidblaster_scheduler;
 mod sid_data_processor;
 mod sid_devices;
+mod sid_info;
 mod sldb;
 mod stil;
 mod ultimate_device;
@@ -19,7 +20,7 @@ mod ultimate_device;
 use parking_lot::Mutex;
 use std::fs::read;
 use std::io::{Error, ErrorKind};
-use std::sync::atomic::{Ordering, AtomicI32};
+use std::sync::atomic::{Ordering, AtomicI32, AtomicBool};
 use std::sync::Arc;
 use std::{thread, time};
 use std::collections::VecDeque;
@@ -28,13 +29,15 @@ use thread_priority::{set_current_thread_priority, ThreadPriority};
 #[cfg(windows)]
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
 
-use crate::utils::hvsc;
 use self::acid64_library::Acid64Library;
 use self::sid_data_processor::{SidDataProcessor, SidWrite};
 use self::sid_device::{DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
 use self::sid_devices::{SidDevices, SidDevicesFacade};
 use self::stil::Stil;
 use self::sldb::Sldb;
+
+use crate::utils::hvsc;
+pub use self::sid_info::SidInfo;
 
 const PAL_CYCLES_PER_SECOND: u32 = 312 * 63 * 50;
 const NTSC_CYCLES_PER_SECOND: u32 = 263 * 65 * 60;
@@ -101,9 +104,13 @@ impl SidCommand {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Default)]
 pub struct PlayerOutput {
     pub time: u32,
+    pub device_number: i32,
+    pub song_number: i32,
+    pub has_remote_sidplayer: bool,
+    pub last_error: Option<String>
 }
 
 pub struct Player {
@@ -121,6 +128,7 @@ pub struct Player {
     host_name_ultimate: String,
     port_ultimate: String,
     abort_type: Arc<AtomicI32>,
+    sid_loaded: Arc<AtomicBool>,
     cmd_sender: SyncSender<PlayerCommand>,
     cmd_receiver: Receiver<PlayerCommand>,
     paused: bool,
@@ -132,6 +140,7 @@ pub struct Player {
     fast_forward_speed: i32,
     total_cycles: u32,
     output: Arc<Mutex<PlayerOutput>>,
+    sid_info: Arc<Mutex<SidInfo>>,
     stil: Stil,
     sldb: Sldb
 }
@@ -148,8 +157,7 @@ impl Drop for Player {
     }
 }
 
-impl Player
-{
+impl Player {
     pub fn new() -> Player {
         #[cfg(windows)]
         unsafe {
@@ -173,6 +181,7 @@ impl Player
             host_name_ultimate: DEFAULT_ULTIMATE_HOST.to_string(),
             port_ultimate: DEFAULT_ULTIMATE_PORT_NUMBER.to_string(),
             abort_type: Arc::new(AtomicI32::new(ABORT_NO)),
+            sid_loaded: Arc::new(AtomicBool::new(false)),
             cmd_sender,
             cmd_receiver,
             paused: false,
@@ -183,7 +192,8 @@ impl Player
             adjust_clock: false,
             fast_forward_speed: 1,
             total_cycles: 0,
-            output: Arc::new(Mutex::new(PlayerOutput { time: 0 })),
+            output: Arc::new(Mutex::new(PlayerOutput::default())),
+            sid_info: Arc::new(Mutex::new(SidInfo::new())),
             stil: Stil::new(),
             sldb: Sldb::new()
         };
@@ -192,22 +202,14 @@ impl Player
         player_properties
     }
 
-    fn setup_c64_instance(&mut self) {
-        self.c64_instance = self.acid64_lib.create_c64_instance();
-
-        if self.c64_instance == 0 {
-            panic!("C64 instance couldn't be created.");
-        }
-    }
-
     pub fn get_channel_sender(&self) -> SyncSender<PlayerCommand> {
         SyncSender::clone(&self.cmd_sender)
     }
 
-    pub fn set_device_numbers(&mut self, device_numbers: Vec<i32>) {
+    pub fn set_device_numbers(&mut self, device_numbers: &[i32]) {
         self.device_number = *device_numbers.first().unwrap_or(&-1);
 
-        self.device_numbers = device_numbers;
+        self.device_numbers = device_numbers.to_owned();
     }
 
     pub fn set_sid_device_host_name(&mut self, host_name: String) {
@@ -226,8 +228,32 @@ impl Player
         Arc::clone(&self.abort_type)
     }
 
+    pub fn get_sid_loaded_ref(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.sid_loaded)
+    }
+
+    pub fn get_sid_info_ref(&mut self) -> Arc<Mutex<SidInfo>> {
+        Arc::clone(&self.sid_info)
+    }
+
     pub fn play(&mut self) {
-        let _ = set_current_thread_priority(ThreadPriority::Max);
+        let loaded = self.load_file();
+
+        if loaded.is_err() {
+            self.abort_type.store(ABORTED, Ordering::SeqCst);
+            self.output.lock().last_error = Some(loaded.err().unwrap());
+            return;
+        }
+
+        let inited = self.init_song(self.song_number);
+
+        if inited.is_err() {
+            self.abort_type.store(ABORTED, Ordering::SeqCst);
+            self.output.lock().last_error = Some(inited.err().unwrap());
+            return;
+        }
+
+        self.sid_loaded.store(true, Ordering::SeqCst);
 
         let cycles_per_second = self.get_cycles_per_second();
 
@@ -250,6 +276,8 @@ impl Player
         self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
 
         let mut device_state = DeviceResponse::Ok;
+
+        let _ = set_current_thread_priority(ThreadPriority::Max);
 
         while !self.should_quit() {
             self.process_player_command();
@@ -324,6 +352,153 @@ impl Player
         self.fast_forward_speed = 1;
 
         self.abort_type.store(ABORTED, Ordering::SeqCst);
+    }
+
+    pub fn stop_player(&mut self) {
+        if let Some(ref mut sid_device) = self.sid_device {
+            if self.device_number != -1 && !self.paused && sid_device.has_remote_sidplayer(self.device_number) {
+                if sid_device.is_connected(self.device_number) {
+                    sid_device.stop_sid(self.device_number);
+                } else {
+                    self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
+                }
+            }
+        }
+    }
+
+    pub fn get_device_names(&self) -> Arc<Mutex<Vec<String>>> {
+        Arc::clone(&self.device_names)
+    }
+
+    pub fn get_last_error(&mut self) -> Option<String> {
+        self.sid_device.as_mut().unwrap().get_last_error(self.device_number)
+    }
+
+    pub fn get_player_output(&mut self) -> Arc<Mutex<PlayerOutput>> {
+        Arc::clone(&self.output)
+    }
+
+    pub fn enable_fast_forward(&mut self) {
+        if !self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
+            self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+            self.fast_forward_speed = -1;
+            self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
+            self.rewrite_buffer();
+        }
+    }
+
+    pub fn disable_fast_forward(&mut self) {
+        if !self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
+            self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
+            self.fast_forward_speed = 1;
+            self.sid_device.as_mut().unwrap().disable_turbo_mode(self.device_number);
+            self.rewrite_buffer();
+        }
+    }
+
+    pub fn setup_sldb_and_stil(&mut self, hvsc_location: Option<String>, load_stil: bool) -> Result<(), String> {
+        let mut hvsc_root = self.get_hvsc_root_location(hvsc_location)?;
+
+        if hvsc_root.is_none() {
+            if let Some(filename) = &self.filename {
+                hvsc_root = hvsc::get_hvsc_root(filename);
+            }
+        }
+
+        if let Some(hvsc_root) = hvsc_root {
+            self.sldb.load(&hvsc_root)?;
+
+            if load_stil {
+                self.stil.load(&hvsc_root)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_adjust_clock(&mut self, adjust_clock: bool) {
+        self.adjust_clock = adjust_clock;
+    }
+
+    pub fn init_devices(&mut self) -> Result<(), String> {
+        if self.sid_device.is_none() {
+            let mut devices = SidDevices::new(Arc::clone(&self.abort_type))
+                .connect_hardsid_device()
+                .connect_sidblaster()
+                .connect_network_device(&self.host_name_sid_device, &self.port_sid_device)
+                .connect_ultimate_device(&self.host_name_ultimate, &self.port_ultimate);
+
+            if !devices.has_devices() && devices.has_errors() {
+                return Err(devices.errors());
+            }
+
+            devices.set_native_device_clock(!self.adjust_clock);
+
+            let sid_device = SidDevicesFacade{ devices };
+            self.sid_device = Some(Box::new(sid_device));
+
+            self.refresh_device_names();
+        }
+
+        self.configure_sid_device(false)?;
+        Ok(())
+    }
+
+    pub fn set_file_name(&mut self, filename: &str) {
+        self.filename = Some(filename.to_string());
+    }
+
+    pub fn get_next_song(&self) -> i32 {
+        let number_of_songs = self.get_number_of_songs();
+        (self.song_number + 1) % number_of_songs
+    }
+
+    pub fn get_prev_song(&mut self) -> i32 {
+        let number_of_songs = self.get_number_of_songs();
+        (self.song_number + number_of_songs - 1) % number_of_songs
+    }
+
+    pub fn set_song_to_play(&mut self, song_number: i32) {
+        self.song_number = song_number;
+        self.output.lock().song_number = song_number;
+    }
+
+    fn setup_c64_instance(&mut self) {
+        self.c64_instance = self.acid64_lib.create_c64_instance();
+
+        if self.c64_instance == 0 {
+            panic!("C64 instance couldn't be created.");
+        }
+    }
+
+    fn is_aborted_for_command(&self) -> bool {
+        let abort_type = self.abort_type.load(Ordering::SeqCst);
+        abort_type == ABORT_FOR_COMMAND
+    }
+
+    fn send_sid(&mut self, filename: &str, song_number: i32) {
+        let sid_data = if filename.ends_with(".mus") || filename.ends_with(".str") {
+            Self::read_mus_files(filename)
+        } else {
+            read(filename)
+        };
+
+        if let Ok(sid_data) = sid_data {
+            self.acid64_lib.skip_silence(self.c64_instance, false);
+            self.acid64_lib.enable_volume_fix(self.c64_instance, false);
+
+            self.redo_buffer.clear();
+            self.sid_data_processor.init(0);
+            self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
+
+            self.sid_written = false;
+
+            let ssl_data = self.generate_ssl_data();
+            self.sid_device.as_mut().unwrap().send_sid(self.device_number, filename, song_number, &sid_data, &ssl_data);
+
+            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
+                self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
+            }
+        }
     }
 
     fn process_player_command(&mut self) {
@@ -402,42 +577,6 @@ impl Player
         DeviceResponse::Ok
     }
 
-    pub fn stop_player(&mut self) {
-        if self.sid_device.is_some() && self.device_number != -1 && !self.paused && self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
-            if self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
-                self.sid_device.as_mut().unwrap().stop_sid(self.device_number);
-            } else {
-                self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
-            }
-        }
-    }
-
-    fn send_sid(&mut self, filename: &str, song_number: i32) {
-        let sid_data = if filename.ends_with(".mus") || filename.ends_with(".str") {
-            Self::read_mus_files(filename)
-        } else {
-            read(filename)
-        };
-
-        if let Ok(sid_data) = sid_data {
-            self.acid64_lib.skip_silence(self.c64_instance, false);
-            self.acid64_lib.enable_volume_fix(self.c64_instance, false);
-
-            self.redo_buffer.clear();
-            self.sid_data_processor.init(0);
-            self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
-
-            self.sid_written = false;
-
-            let ssl_data = self.generate_ssl_data();
-            self.sid_device.as_mut().unwrap().send_sid(self.device_number, filename, song_number, &sid_data, &ssl_data);
-
-            if !self.sid_device.as_mut().unwrap().is_connected(self.device_number) {
-                self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
-            }
-        }
-    }
-
     fn read_mus_files(filename: &str) -> Result<Vec<u8>, Error> {
         if filename.ends_with(".mus") {
             if let Ok(data_mus) = read(filename) {
@@ -501,46 +640,16 @@ impl Player
         result
     }
 
-    pub fn restart_song(&mut self) -> Result<(), String> {
-        self.set_song_to_play(self.song_number)
+    fn restart_song(&mut self) -> Result<(), String> {
+        self.set_song_to_play(self.song_number);
+        self.init_song(self.song_number)
     }
 
-    pub fn update_player_output(&mut self) {
+    fn update_player_output(&mut self) {
         self.sid_data_processor.process_sid_write_fifo();
 
         let mut output = self.output.lock();
         output.time = self.sid_data_processor.get_time_in_millis();
-    }
-
-    fn is_aborted_for_command(&self) -> bool {
-        let abort_type = self.abort_type.load(Ordering::SeqCst);
-        abort_type == ABORT_FOR_COMMAND
-    }
-
-    pub fn enable_fast_forward(&mut self) {
-        if !self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
-            self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-            self.fast_forward_speed = -1;
-            self.sid_device.as_mut().unwrap().enable_turbo_mode(self.device_number);
-            self.rewrite_buffer();
-        }
-    }
-
-    pub fn disable_fast_forward(&mut self) {
-        if !self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
-            self.sid_device.as_mut().unwrap().reset_all_buffers(self.device_number);
-            self.fast_forward_speed = 1;
-            self.sid_device.as_mut().unwrap().disable_turbo_mode(self.device_number);
-            self.rewrite_buffer();
-        }
-    }
-
-    pub fn get_device_names(&self) -> Arc<Mutex<Vec<String>>> {
-        Arc::clone(&self.device_names)
-    }
-
-    pub fn get_last_error(&mut self) -> Option<String> {
-        self.sid_device.as_mut().unwrap().get_last_error(self.device_number)
     }
 
     fn refresh_device_names(&mut self) {
@@ -570,39 +679,11 @@ impl Player
         }
     }
 
-    pub fn get_player_output(&mut self) -> Arc<Mutex<PlayerOutput>> {
-        Arc::clone(&self.output)
-    }
-
-    pub fn get_song_length(&self, song_number: i32) -> i32 {
+    fn get_song_length(&self, song_number: i32) -> i32 {
         self.sldb.get_song_length(&self.md5_hash, song_number).unwrap_or(DEFAULT_SONG_LENGTH_IN_MILLIS)
     }
 
-    pub fn get_filename(&self) -> Option<String> {
-        self.filename.clone()
-    }
-
-    pub fn get_sid_model(&self) -> i32 {
-        self.acid64_lib.get_sid_model(self.c64_instance, 0)
-    }
-
-    pub fn get_c64_version(&self) -> i32 {
-        self.acid64_lib.get_c64_version(self.c64_instance)
-    }
-
-    pub fn get_title(&self) -> String {
-        self.acid64_lib.get_title(self.c64_instance)
-    }
-
-    pub fn get_author(&self) -> String {
-        self.acid64_lib.get_author(self.c64_instance)
-    }
-
-    pub fn get_released(&self) -> String {
-        self.acid64_lib.get_released(self.c64_instance)
-    }
-
-    pub fn get_stil_entry(&self) -> Option<String> {
+    fn get_stil_entry(&self) -> Option<String> {
         let hvsc_filename = self.sldb.get_hvsc_filename(&self.md5_hash);
 
         if let Some(hvsc_filename) = hvsc_filename {
@@ -611,78 +692,17 @@ impl Player
         None
     }
 
-    pub fn get_device_numbers(&self) -> Vec<i32> {
-        self.device_numbers.clone()
+    fn get_number_of_songs(&self) -> i32 {
+        self.sid_info.lock().number_of_songs
     }
 
-    pub fn get_song_number(&self) -> i32 {
-        self.song_number
-    }
+    fn load_file(&mut self) -> Result<(), String> {
+        if let Some(ref filename) = self.filename {
+            let is_loaded = self.acid64_lib.load_file(self.c64_instance, filename);
 
-    pub fn get_number_of_songs(&self) -> i32 {
-        self.acid64_lib.get_number_of_songs(self.c64_instance)
-    }
-
-    pub fn get_device_info(&mut self, device_number: i32) -> String {
-        self.sid_device.as_mut().unwrap().get_device_info(device_number).name
-    }
-
-    pub fn has_remote_sidplayer(&mut self) -> bool {
-        self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number)
-    }
-
-    pub fn setup_sldb_and_stil(&mut self, hvsc_location: Option<String>, load_stil: bool) -> Result<(), String> {
-        let mut hvsc_root = self.get_hvsc_root_location(hvsc_location)?;
-
-        if hvsc_root.is_none() {
-            if let Some(filename) = &self.filename {
-                hvsc_root = hvsc::get_hvsc_root(filename);
+            if !is_loaded {
+                return Err(format!("File '{filename}' could not be loaded."))
             }
-        }
-
-        if let Some(hvsc_root) = hvsc_root {
-            self.sldb.load(&hvsc_root)?;
-
-            if load_stil {
-                self.stil.load(&hvsc_root)?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn set_adjust_clock(&mut self, adjust_clock: bool) {
-        self.adjust_clock = adjust_clock;
-    }
-
-    pub fn init_devices(&mut self) -> Result<(), String> {
-        if self.sid_device.is_none() {
-            let mut devices = SidDevices::new(Arc::clone(&self.abort_type))
-                .connect_hardsid_device()
-                .connect_sidblaster()
-                .connect_network_device(&self.host_name_sid_device, &self.port_sid_device)
-                .connect_ultimate_device(&self.host_name_ultimate, &self.port_ultimate);
-
-            if !devices.has_devices() && devices.has_errors() {
-                return Err(devices.errors());
-            }
-
-            devices.set_native_device_clock(!self.adjust_clock);
-
-            let sid_device = SidDevicesFacade{ devices };
-            self.sid_device = Some(Box::new(sid_device));
-
-            self.refresh_device_names();
-        }
-        Ok(())
-    }
-
-    pub fn load_file(&mut self, filename: &str) -> Result<(), String> {
-        let is_loaded = self.acid64_lib.load_file(self.c64_instance, filename);
-
-        if !is_loaded {
-            Err(format!("File '{filename}' could not be loaded."))
-        } else {
-            self.filename = Some(filename.to_string());
 
             if self.sldb.is_new_md5_hash_used() {
                 self.md5_hash = self.acid64_lib.get_md5_hash(self.c64_instance);
@@ -690,14 +710,73 @@ impl Player
                 self.md5_hash = self.acid64_lib.get_ancient_md5_hash(self.c64_instance);
             }
 
+            self.retrieve_sid_info();
+
             self.init_devices()?;
             self.configure_sid_device(false)?;
-            self.set_song_to_play(-1)
+            Ok(())
+        } else {
+            Err("Filename is not set.".to_string())
         }
     }
 
-    pub fn get_number_of_sids(&self) -> i32 {
-        self.acid64_lib.get_number_of_sids(self.c64_instance)
+    fn retrieve_sid_info(&mut self) {
+        let mut sid_info = self.sid_info.lock();
+        sid_info.title = self.acid64_lib.get_title(self.c64_instance);
+        sid_info.author = self.acid64_lib.get_author(self.c64_instance);
+        sid_info.released = self.acid64_lib.get_released(self.c64_instance);
+        sid_info.load_address = self.acid64_lib.get_load_address(self.c64_instance);
+        sid_info.load_end_address = self.acid64_lib.get_load_end_address(self.c64_instance);
+        sid_info.init_address = self.acid64_lib.get_init_address(self.c64_instance);
+        sid_info.play_address = self.acid64_lib.get_play_address(self.c64_instance);
+        sid_info.number_of_songs = self.acid64_lib.get_number_of_songs(self.c64_instance);
+        sid_info.default_song = self.acid64_lib.get_default_song(self.c64_instance);
+        sid_info.clock_frequency = self.acid64_lib.get_c64_version(self.c64_instance);
+        sid_info.speed_flag = self.acid64_lib.get_speed_flag(self.c64_instance);
+        sid_info.speed_flags = self.acid64_lib.get_speed_flags(self.c64_instance);
+        sid_info.file_type = self.acid64_lib.get_file_type(self.c64_instance);
+        sid_info.free_memory_address = self.acid64_lib.get_free_memory_address(self.c64_instance);
+        sid_info.free_memory_end_address = self.acid64_lib.get_free_memory_end_address(self.c64_instance);
+        sid_info.filename = self.filename.clone().unwrap_or_default();
+        sid_info.file_format = self.acid64_lib.get_file_format(self.c64_instance);
+        sid_info.basic_sid = self.acid64_lib.is_basic_sid(self.c64_instance);
+        sid_info.md5_hash = self.md5_hash.clone();
+
+        let song_length = self.get_song_length(self.song_number);
+        sid_info.song_length = song_length;
+
+        sid_info.stil_entry = self.get_stil_entry();
+
+        self.set_sid_chip_info(&mut sid_info);
+        self.set_mus_info(&mut sid_info);
+    }
+
+    fn set_sid_chip_info(&self, sid_info: &mut SidInfo) {
+        let mut sid_models = Vec::new();
+        let mut sid_addresses = Vec::new();
+
+        let number_of_sids = self.acid64_lib.get_number_of_sids(self.c64_instance);
+        for sid_nr in 0..number_of_sids {
+            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance, sid_nr);
+            sid_models.push(sid_model);
+
+            let sid_address = self.acid64_lib.get_sid_address(self.c64_instance, sid_nr);
+            sid_addresses.push(sid_address);
+        }
+
+        sid_info.number_of_sids = number_of_sids;
+        sid_info.sid_models = sid_models;
+        sid_info.sid_addresses = sid_addresses;
+    }
+
+    fn set_mus_info(&self, sid_info: &mut SidInfo) {
+        let mut mus_text = [0; 32*5];
+        self.acid64_lib.get_mus_text(self.c64_instance, &mut mus_text);
+        sid_info.mus_text = mus_text;
+
+        let mut mus_colors = [0; 32 * 5];
+        self.acid64_lib.get_mus_colors(self.c64_instance, &mut mus_colors);
+        sid_info.mus_colors = mus_colors;
     }
 
     fn should_quit(&mut self) -> bool {
@@ -838,35 +917,20 @@ impl Player
         if should_reset {
             self.sid_device.as_mut().unwrap().reset_all_sids(self.device_number);
         }
+
+        let has_remote_sidplayer = self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number);
+        self.output.lock().has_remote_sidplayer = has_remote_sidplayer;
         Ok(())
     }
 
-    pub fn get_next_song(&self) -> i32 {
-        let number_of_songs = self.get_number_of_songs();
-
-        if self.song_number == number_of_songs - 1 {
-            0
-        } else {
-            self.song_number + 1
-        }
-    }
-
-    pub fn get_prev_song(&mut self) -> i32 {
-        if self.song_number == 0 {
-            self.get_number_of_songs() - 1
-        } else {
-            self.song_number - 1
-        }
-    }
-
-    pub fn set_song_to_play(&mut self, song_number: i32) -> Result<(), String> {
+    fn init_song(&mut self, song_number: i32) -> Result<(), String> {
         let song_number = if song_number == -1 {
-            self.acid64_lib.get_default_song(self.c64_instance)
+            self.sid_info.lock().default_song
         } else {
             song_number
         };
 
-        let number_of_songs = self.acid64_lib.get_number_of_songs(self.c64_instance);
+        let number_of_songs = self.sid_info.lock().number_of_songs;
 
         if song_number < 0 || song_number >= number_of_songs {
             return Err(format!("Song number {} doesn't exist.", song_number + 1));
@@ -888,10 +952,11 @@ impl Player
         Ok(())
     }
 
-    pub fn configure_sid_model(&mut self, number_of_sids: i32) {
+    fn configure_sid_model(&mut self, number_of_sids: i32) {
+        let sid_info = self.sid_info.lock();
         for i in 0..number_of_sids {
             let device_number = self.device_numbers.get(i as usize).unwrap_or(&0);
-            let sid_model = self.acid64_lib.get_sid_model(self.c64_instance, i);
+            let sid_model = sid_info.sid_models.get(i as usize).unwrap_or(&0);
             match sid_model {
                 2 => self.sid_device.as_mut().unwrap().set_sid_model(*device_number, i, SidModel::Mos8580),
                 _ => self.sid_device.as_mut().unwrap().set_sid_model(*device_number, i, SidModel::Mos6581)
@@ -899,8 +964,8 @@ impl Player
         }
     }
 
-    pub fn configure_sid_clock(&mut self) {
-        let c64_model = self.acid64_lib.get_c64_version(self.c64_instance);
+    fn configure_sid_clock(&mut self) {
+        let c64_model = self.sid_info.lock().clock_frequency;
 
         match c64_model {
             2 => self.sid_device.as_mut().unwrap().set_sid_clock(self.device_number, SidClock::Ntsc),
@@ -913,7 +978,7 @@ impl Player
 
     fn get_valid_device_number(&mut self, device_number: i32) -> i32 {
         if device_number == -1 {
-            i32::from(self.acid64_lib.get_sid_model(self.c64_instance, 0) == SID_MODEL_8580)
+            (self.sid_info.lock().sid_models.first().copied().unwrap_or(0) == SID_MODEL_8580) as i32
         } else {
             device_number
         }
@@ -939,6 +1004,8 @@ impl Player
         }
 
         self.device_number = self.get_valid_device_number(self.device_number);
+        self.output.lock().device_number = self.device_number;
+
         self.validate_device_numbers()
     }
 

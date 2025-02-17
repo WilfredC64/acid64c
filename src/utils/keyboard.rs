@@ -38,3 +38,9 @@ fn read_char() -> Option<char> {
     }
     None
 }
+
+pub fn flush_keyboard_buffer() {
+    while poll(Duration::from_millis(0)).unwrap_or(false) {
+        let _ = read();
+    }
+}

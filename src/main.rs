@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2023 Wilfred Bos
+// Copyright (C) 2019 - 2025 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod config;
@@ -21,7 +21,7 @@ fn main() {
     match run() {
         Ok(_) => {}
         Err(message) => {
-            eprintln!("ERROR: {message}");
+            eprintln!("\nERROR: {message}");
             exit(1);
         }
     }
@@ -29,6 +29,14 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let mut player = Player::new();
+
+    let version = player.get_library_version();
+    if version < 0x210 {
+        return Err("acid64pro.dll version 2.1.0 or higher required.".to_string());
+    }
+
+    print_library_version(version);
+
     let config = Config::read()?;
 
     if config.adjust_clock {
@@ -43,27 +51,21 @@ fn run() -> Result<(), String> {
         player.set_ultimate_device_host_name(host_name);
     }
 
-    player.set_device_numbers(config.device_numbers);
-    player.init_devices()?;
+    player.set_device_numbers(&config.device_numbers);
 
     if config.display_devices {
+        player.init_devices()?;
         let device_names = player.get_device_names();
         print_device_names(device_names.lock().to_vec());
         return Ok(());
     }
 
     player.setup_sldb_and_stil(config.hvsc_location, config.display_stil)?;
-    player.load_file(&config.filename)?;
+    player.set_file_name(&config.filename);
+
     if config.song_number != -1 {
-        player.set_song_to_play(config.song_number)?;
+        player.set_song_to_play(config.song_number);
     }
-
-    let version = player.get_library_version();
-    if version < 0x210 {
-        return Err("acid64pro.dll version 2.1.0 or higher required.".to_string());
-    }
-
-    print_library_version(version);
 
     let mut console_player = ConsolePlayer::new(player, config.display_stil);
     console_player.play()?;
@@ -71,7 +73,7 @@ fn run() -> Result<(), String> {
 }
 
 fn print_usage() {
-    println!("ACID64 Console v1.09 - Copyright (c) 2003-2023 Wilfred Bos");
+    println!("ACID64 Console v1.10 - Copyright (c) 2003-2025 Wilfred Bos");
     println!("\nUsage: acid64c <options> <file_name>");
     println!("\n<Options>");
     println!("  -c: adjust clock for devices that don't support PAL/NTSC clock");

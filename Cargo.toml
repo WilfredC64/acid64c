@@ -1,6 +1,6 @@
 [package]
 name = "acid64c"
-version = "1.0.9"
+version = "1.0.10"
 authors = ["Wilfred Bos"]
 description = "ACID64 Console SID player."
 readme = "README.md"
