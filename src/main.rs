@@ -98,5 +98,5 @@ fn print_device_names(device_names: Vec<String>) {
 }
 
 fn print_library_version(version: i32) {
-    println!("ACID64 library version v{}.{}.{}", version >> 8, version >> 4 & 0x0f, version & 0x0f);
+    println!("ACID64 library version v{}.{}.{}", version >> 8, (version >> 4) & 0x0f, version & 0x0f);
 }

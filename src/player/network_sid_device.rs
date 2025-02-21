@@ -603,7 +603,7 @@ impl NetworkSidDevice {
 
     fn convert_device_number(&mut self, dev_nr: i32) -> i32 {
         if self.interface_version == 1 {
-            return (self.sid_model & 0x01) | (self.sid_clock as i32) << 1 | (self.sampling_method as i32) << 2;
+            return (self.sid_model & 0x01) | ((self.sid_clock as i32) << 1) | ((self.sampling_method as i32) << 2);
         }
         dev_nr
     }
