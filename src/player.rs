@@ -19,7 +19,7 @@ mod ultimate_device;
 
 use parking_lot::Mutex;
 use std::fs::read;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::sync::atomic::{Ordering, AtomicI32, AtomicBool};
 use std::sync::Arc;
 use std::{thread, time};
@@ -587,7 +587,7 @@ impl Player {
                     Ok(data_mus)
                 }
             } else {
-                Err(Error::new(ErrorKind::Other, "Error loading mus file"))
+                Err(Error::other("Error loading mus file"))
             }
         } else if filename.ends_with(".str") {
             if let Ok(data_str) = read(filename) {
@@ -595,10 +595,10 @@ impl Player {
                 if let Ok(data_mus) = read(mus_filename) {
                     Ok([data_mus, data_str].concat())
                 } else {
-                    Err(Error::new(ErrorKind::Other, "Error loading mus file"))
+                    Err(Error::other("Error loading mus file"))
                 }
             } else {
-                Err(Error::new(ErrorKind::Other, "Error loading str file"))
+                Err(Error::other("Error loading str file"))
             }
         } else {
             read(filename)

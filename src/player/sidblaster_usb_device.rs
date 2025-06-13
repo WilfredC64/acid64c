@@ -334,7 +334,7 @@ impl SidBlasterUsbDevice {
 
     fn wait_until_queue_is_processed(&mut self) {
         loop {
-            if self.queue.len() == 0 || self.is_aborted() {
+            if self.queue.is_empty() || self.is_aborted() {
                 break;
             }
 

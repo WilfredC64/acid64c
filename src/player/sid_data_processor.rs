@@ -200,11 +200,7 @@ impl SidDataProcessor {
         ];
 
         let last_write_time = self.get_last_sid_write_times(0x04 + reg_base);
-        let last_write_time_diff = if self.time_in_cycles > last_write_time {
-            self.time_in_cycles - last_write_time
-        } else {
-            0
-        };
+        let last_write_time_diff = self.time_in_cycles.saturating_sub(last_write_time);
 
         let gate_cleared = self.last_sid_write[0x04 + reg_base as usize] & 1 == 0;
         let last_release = self.last_sid_write[0x06 + reg_base as usize] & 0x0f;

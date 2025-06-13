@@ -25,7 +25,7 @@ impl Config {
         let mut adjust_clock = false;
         let mut device_numbers = vec![-1];
         let mut song_number = -1;
-        let filename = env::args().last().unwrap();
+        let filename = env::args().next_back().unwrap();
 
         for argument in env::args().filter(|arg| arg.len() > 1 && arg.starts_with('-')) {
             match &argument[1..2] {
