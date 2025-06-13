@@ -22,14 +22,14 @@ if-addrs = "0.13"
 libloading = "0.8"
 parking_lot = "0.12"
 timer = "0.2"
-thread-priority = "1.2"
+thread-priority = "2.0"
 
 [dependencies.libftd2xx]
 version = "0.33"
 features = ["static"]
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61.1", features = [
+windows = { version = "0.61.3", features = [
     "Win32_Media"
 ] }
 
