@@ -366,7 +366,7 @@ impl ConsolePlayer {
             let sid_info = self.sid_info.lock();
             if let Some(stil_entry) = &sid_info.stil_entry {
                 println!("\nSTIL Info");
-                println!("---------\n{}", stil_entry);
+                println!("---------\n{stil_entry}");
             }
         }
     }

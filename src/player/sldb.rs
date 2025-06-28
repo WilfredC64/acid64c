@@ -86,7 +86,7 @@ impl Sldb {
         self.songlengths.clear();
 
         for line in text_lines {
-            let line = line.map_err(|error| format!("Error reading SLDB file -> {}", error))?;
+            let line = line.map_err(|error| format!("Error reading SLDB file -> {error}"))?;
             self.process_line(&line, &mut song_lengths, &mut md5_hash, &mut hvsc_filename);
         }
 
@@ -139,7 +139,7 @@ impl Sldb {
         const MAX_LINES_TO_VALIDATE: usize = 20;
 
         for (index, line) in text_lines.enumerate() {
-            let line = line.map_err(|error| format!("Error reading SLDB file -> {}", error))?;
+            let line = line.map_err(|error| format!("Error reading SLDB file -> {error}"))?;
             let trimmed_line = line.trim_start();
 
             if trimmed_line.is_empty() {

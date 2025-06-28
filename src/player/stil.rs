@@ -83,7 +83,7 @@ impl Stil {
         let mut stil_entry: Vec<String> = Vec::with_capacity(MIN_STIL_LINES_CAPACITY);
 
         for line in text_lines {
-            let line = line.map_err(|error| format!("Error reading STIL file -> {}", error))?;
+            let line = line.map_err(|error| format!("Error reading STIL file -> {error}"))?;
             self.process_line(&line, &mut stil_entry, &mut stil_filename, &mut global);
         }
         self.add_stil_entry(&stil_filename, &stil_entry, global);
@@ -161,7 +161,7 @@ impl Stil {
         const MAX_LINES_TO_VALIDATE: usize = 50;
 
         for (index, line) in text_lines.enumerate() {
-            let line = line.map_err(|error| format!("Error reading STIL file -> {}", error))?;
+            let line = line.map_err(|error| format!("Error reading STIL file -> {error}"))?;
             let trimmed_line = line.trim();
 
             if index >= MAX_LINES_TO_VALIDATE {
