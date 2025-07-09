@@ -147,9 +147,8 @@ pub struct Player {
 
 impl Drop for Player {
     fn drop(&mut self) {
-        if self.c64_instance > 0 {
-            self.acid64_lib.close_c64_instance(self.c64_instance);
-        }
+        self.close_c64_instance();
+
         #[cfg(windows)]
         unsafe {
             timeEndPeriod(1);
@@ -166,7 +165,7 @@ impl Player {
 
         let (cmd_sender, cmd_receiver) = sync_channel(0);
 
-        let mut player_properties = Player {
+        Player {
             acid64_lib: Acid64Library::load().expect("acid64pro library could not be loaded"),
             c64_instance: 0,
             sid_device: None,
@@ -196,10 +195,7 @@ impl Player {
             sid_info: Arc::new(Mutex::new(SidInfo::new())),
             stil: Stil::new(),
             sldb: Sldb::new()
-        };
-
-        player_properties.setup_c64_instance();
-        player_properties
+        }
     }
 
     pub fn get_channel_sender(&self) -> SyncSender<PlayerCommand> {
@@ -236,7 +232,20 @@ impl Player {
         Arc::clone(&self.sid_info)
     }
 
+    fn close_c64_instance(&mut self) {
+        if self.c64_instance > 0 {
+            self.acid64_lib.close_c64_instance(self.c64_instance);
+            self.c64_instance = 0;
+        }
+    }
+
     pub fn play(&mut self) {
+        self.setup_c64_instance();
+        self.play_loop();
+        self.close_c64_instance();
+    }
+
+    pub fn play_loop(&mut self) {
         let loaded = self.load_file();
 
         if loaded.is_err() {
