@@ -12,13 +12,13 @@ build = "build.rs"
 [dependencies]
 ahash = "0.8"
 atomicring = "1.2"
-attohttpc = { version = "0.29", features = ["multipart-form"] }
+attohttpc = { version = "0.30", features = ["multipart-form"] }
 chrono = "0.4"
 crossterm = "0.29"
 encoding = "0.2"
 encoding_rs = "0.8"
 encoding_rs_io = "0.1"
-if-addrs = "0.13"
+if-addrs = "0.14"
 libloading = "0.8"
 parking_lot = "0.12"
 timer = "0.2"
