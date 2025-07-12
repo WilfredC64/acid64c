@@ -128,7 +128,6 @@ pub struct Player {
     host_name_ultimate: String,
     port_ultimate: String,
     abort_type: Arc<AtomicI32>,
-    sid_loaded: Arc<AtomicBool>,
     cmd_sender: SyncSender<PlayerCommand>,
     cmd_receiver: Receiver<PlayerCommand>,
     paused: bool,
@@ -180,7 +179,6 @@ impl Player {
             host_name_ultimate: DEFAULT_ULTIMATE_HOST.to_string(),
             port_ultimate: DEFAULT_ULTIMATE_PORT_NUMBER.to_string(),
             abort_type: Arc::new(AtomicI32::new(ABORT_NO)),
-            sid_loaded: Arc::new(AtomicBool::new(false)),
             cmd_sender,
             cmd_receiver,
             paused: false,
@@ -224,10 +222,6 @@ impl Player {
         Arc::clone(&self.abort_type)
     }
 
-    pub fn get_sid_loaded_ref(&self) -> Arc<AtomicBool> {
-        Arc::clone(&self.sid_loaded)
-    }
-
     pub fn get_sid_info_ref(&mut self) -> Arc<Mutex<SidInfo>> {
         Arc::clone(&self.sid_info)
     }
@@ -239,13 +233,13 @@ impl Player {
         }
     }
 
-    pub fn play(&mut self) {
+    pub fn play(&mut self, sid_loaded: Arc<AtomicBool>) {
         self.setup_c64_instance();
-        self.play_loop();
+        self.play_loop(sid_loaded);
         self.close_c64_instance();
     }
 
-    pub fn play_loop(&mut self) {
+    pub fn play_loop(&mut self, sid_loaded: Arc<AtomicBool>) {
         let loaded = self.load_file();
 
         if loaded.is_err() {
@@ -262,7 +256,7 @@ impl Player {
             return;
         }
 
-        self.sid_loaded.store(true, Ordering::SeqCst);
+        sid_loaded.store(true, Ordering::SeqCst);
 
         let cycles_per_second = self.get_cycles_per_second();
 

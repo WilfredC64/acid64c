@@ -25,7 +25,6 @@ pub struct ConsolePlayer {
     display_stil: bool,
     paused: bool,
     abort_type: Arc<AtomicI32>,
-    sid_loaded: Arc<AtomicBool>,
     fast_forward_in_progress: Arc<AtomicBool>,
     last_fast_forward: Arc<Mutex<Instant>>,
     player_output: Arc<Mutex<PlayerOutput>>,
@@ -43,7 +42,6 @@ impl ConsolePlayer {
         let player_output = player_arc.lock().get_player_output();
         let sid_info = player_arc.lock().get_sid_info_ref();
         let abort_type = player_arc.lock().get_aborted_ref();
-        let sid_loaded = player_arc.lock().get_sid_loaded_ref();
         let device_names = player_arc.lock().get_device_names();
 
         ConsolePlayer {
@@ -52,7 +50,6 @@ impl ConsolePlayer {
             display_stil,
             paused: false,
             abort_type,
-            sid_loaded,
             fast_forward_in_progress,
             last_fast_forward,
             player_output,
@@ -241,14 +238,18 @@ impl ConsolePlayer {
         self.disable_fast_forward(clock);
 
         self.abort_type.store(ABORT_NO, Ordering::SeqCst);
-        self.sid_loaded.store(false, Ordering::SeqCst);
 
-        let player_clone = Arc::clone(&self.player);
-        let player_thread = thread::spawn(move || {
-            player_clone.lock().play();
-        });
+        let sid_loaded = Arc::new(AtomicBool::new(false));
 
-        if let Err(e) = self.wait_until_sid_is_loaded() {
+        let player_thread = {
+            let player = Arc::clone(&self.player);
+            let sid_loaded = Arc::clone(&sid_loaded);
+            thread::spawn(move || {
+                player.lock().play(sid_loaded);
+            })
+        };
+
+        if let Err(e) = self.wait_until_sid_is_loaded(sid_loaded) {
             self.player_output.lock().last_error = Some(e);
             self.abort_type.store(ABORTED, Ordering::SeqCst);
         }
@@ -256,9 +257,9 @@ impl ConsolePlayer {
         player_thread
     }
 
-    fn wait_until_sid_is_loaded(&mut self) -> Result<(), String> {
+    fn wait_until_sid_is_loaded(&mut self, sid_loaded: Arc<AtomicBool>) -> Result<(), String> {
         let start_time = Instant::now();
-        while !self.sid_loaded.load(Ordering::SeqCst) && !self.is_aborted() {
+        while !sid_loaded.load(Ordering::SeqCst) && !self.is_aborted() {
             thread::sleep(Duration::from_millis(LOOP_RATE_IN_MS));
 
             if start_time.elapsed().as_millis() > LOOP_TIME_OUT_MILLIS {
