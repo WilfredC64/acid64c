@@ -22,7 +22,7 @@ if-addrs = "0.14"
 libloading = "0.8"
 parking_lot = "0.12"
 timer = "0.2"
-thread-priority = "2.0"
+thread-priority = "2.1"
 
 [dependencies.libftd2xx]
 version = "0.33"
