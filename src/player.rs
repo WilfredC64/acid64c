@@ -455,7 +455,7 @@ impl Player {
         (self.song_number + 1) % number_of_songs
     }
 
-    pub fn get_prev_song(&mut self) -> i32 {
+    pub fn get_prev_song(&self) -> i32 {
         let number_of_songs = self.get_number_of_songs();
         (self.song_number + number_of_songs - 1) % number_of_songs
     }
