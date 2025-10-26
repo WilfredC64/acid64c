@@ -128,6 +128,12 @@ impl Acid64Library {
         }
     }
 
+    pub fn get_sid_packet(&self, c64_instance: usize) -> u32 {
+        unsafe {
+            (self.a64lib.get(b"getSidPacket").unwrap() as Symbol<unsafe extern "system" fn(usize) -> u32>)(c64_instance)
+        }
+    }
+
     pub fn get_title(&self, c64_instance: usize) -> String {
         unsafe {
             let title_cstyle = (self.a64lib.get(b"getTitle").unwrap() as Symbol<unsafe extern "system" fn(usize) -> *const i8>)(c64_instance);
@@ -400,10 +406,12 @@ impl Acid64Library {
         }
     }
 
+    #[inline]
     fn convert_string_to_ansi_pchar(text: &str) -> *const i8 {
         CString::new(WINDOWS_1252.encode(text, EncoderTrap::Ignore).unwrap()).unwrap().into_raw()
     }
 
+    #[inline]
     unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
         if text.is_null() {
             None

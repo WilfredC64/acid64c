@@ -1,7 +1,7 @@
 
-                    ACID 64 Player Library v2.1.4
+                    ACID 64 Player Library v2.1.5
 
-                 Copyright (c) 2008-2022 Wilfred Bos
+                 Copyright (c) 2008-2025 Wilfred Bos
                      Programmed by: Wilfred Bos
                        https://www.acid64.com
                 Concept by: Sándor Téli & Wilfred Bos
@@ -34,6 +34,7 @@ The library supports the following methods (in Delphi code):
   function getRegister(c64: Pointer): Byte; stdcall; external 'acid64pro';
   function getData(c64: Pointer): Byte; stdcall; external 'acid64pro';
   function getCycles(c64: Pointer): Word; stdcall; external 'acid64pro';
+  function getSidPacket(c64: Pointer): LongWord; stdcall; external 'acid64pro';
   function getTitle(c64: Pointer): PChar; stdcall; external 'acid64pro';
   function getAuthor(c64: Pointer): PChar; stdcall; external 'acid64pro';
   function getReleased(c64: Pointer): PChar; stdcall; external 'acid64pro';
@@ -83,7 +84,7 @@ The library supports the following methods (in Delphi code):
 getVersion
 ==========
 The 'getVersion' method returns the version number of the library in hex.
-E.g. 0x214 means version 2.1.4
+E.g. 0x215 means version 2.1.5
 
 
 createC64Instance
@@ -252,6 +253,19 @@ read command is performed. The cycles returned is also for information only
 since the number of cycles between the last write and the following write
 (including the read command cycles) is returned by the 'getCycles' when the
 SID_WRITE_COMMAND is processed.
+
+
+getSidPacket
+============
+The 'getSidPacket' method retrieves the register, data and the number of cycles
+of a SID write. It basically replaces the getRegister, getData and the getCycles
+call.
+
+The returned LongWord can be interpreted as:
+
+Bits 0-7: SID Register
+Bits 8-15: Data
+Bits 16-31: Cycles
 
 
 getTitle

@@ -317,13 +317,17 @@ impl Player {
 
                 match sid_command {
                     SidCommand::Delay => {
-                        device_state = self.process_sid_write(DUMMY_REG, 0);
+                        let cycles = self.acid64_lib.get_cycles(self.c64_instance) as u32;
+                        device_state = self.process_sid_write(DUMMY_REG, 0, cycles);
+                        idle_count = 0;
                     },
                     SidCommand::Write => {
-                        let reg = self.acid64_lib.get_register(self.c64_instance);
-                        let data = self.acid64_lib.get_data(self.c64_instance);
+                        let sid_packet = self.acid64_lib.get_sid_packet(self.c64_instance);
+                        let reg = sid_packet as u8;
+                        let data = (sid_packet >> 8) as u8;
+                        let cycles = sid_packet >> 16;
 
-                        device_state = self.process_sid_write(reg, data);
+                        device_state = self.process_sid_write(reg, data, cycles);
                         idle_count = 0;
                     },
                     SidCommand::Read => {
@@ -787,8 +791,7 @@ impl Player {
         abort_type == ABORT_TO_QUIT || !self.sid_device.as_mut().unwrap().is_connected(self.device_number)
     }
 
-    fn process_sid_write(&mut self, reg: u8, data: u8) -> DeviceResponse {
-        let cycles_real = self.acid64_lib.get_cycles(self.c64_instance) as u32;
+    fn process_sid_write(&mut self, reg: u8, data: u8, cycles_real: u32) -> DeviceResponse {
         let cycles = self.adjust_cycles(cycles_real);
 
         self.total_cycles = cycles_real;
