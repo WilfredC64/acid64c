@@ -226,7 +226,17 @@ impl Player {
         Arc::clone(&self.sid_info)
     }
 
-    fn close_c64_instance(&mut self) {
+    pub fn setup_c64_instance(&mut self) -> Result<(), String> {
+        if self.c64_instance == 0 {
+            self.c64_instance = self.acid64_lib.create_c64_instance();
+            if self.c64_instance == 0 {
+                return Err("C64 instance couldn't be created.".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn close_c64_instance(&mut self) {
         if self.c64_instance > 0 {
             self.acid64_lib.close_c64_instance(self.c64_instance);
             self.c64_instance = 0;
@@ -234,7 +244,11 @@ impl Player {
     }
 
     pub fn play(&mut self, sid_loaded: Arc<AtomicBool>) {
-        self.setup_c64_instance();
+        if let Err(e) = self.setup_c64_instance() {
+            self.output.lock().last_error = Some(e);
+            self.abort_type.store(ABORTED, Ordering::SeqCst);
+            return;
+        }
         self.play_loop(sid_loaded);
         self.close_c64_instance();
     }
@@ -467,14 +481,6 @@ impl Player {
     pub fn set_song_to_play(&mut self, song_number: i32) {
         self.song_number = song_number;
         self.output.lock().song_number = song_number;
-    }
-
-    fn setup_c64_instance(&mut self) {
-        self.c64_instance = self.acid64_lib.create_c64_instance();
-
-        if self.c64_instance == 0 {
-            panic!("C64 instance couldn't be created.");
-        }
     }
 
     fn is_aborted_for_command(&self) -> bool {

@@ -54,6 +54,7 @@ fn run() -> Result<(), String> {
     player.set_device_numbers(&config.device_numbers);
 
     if config.display_devices {
+        player.setup_c64_instance()?;
         player.init_devices()?;
         let device_names = player.get_device_names();
         print_device_names(device_names.lock().to_vec());
