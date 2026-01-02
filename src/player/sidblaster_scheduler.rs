@@ -22,6 +22,7 @@ const MAX_DEVICE_BUFFER_CYCLES: u32 = 1000;
 const ALLOW_DOUBLE_REG_WRITES_WITHIN_CYCLES: u32 = 20;
 const THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES: u32 = 500;
 const THRESHOLD_TO_SLEEP_THREAD_IN_MICROS: u64 = 1500;
+const SLEEP_THREAD_IN_MICROS: u64 = 1000;
 
 pub enum SidClock {
     Pal = 0,
@@ -210,16 +211,18 @@ impl SidBlasterScheduler {
     }
 
     fn wait(cycles: u32, start_time: &Instant, cycles_per_micro: f64) {
-        let next_time_in_micros = (cycles as f64 / cycles_per_micro) as u64;
-        let elapsed_in_micros = start_time.elapsed().as_micros() as u64;
+        let target_micros = (cycles as f64 / cycles_per_micro) as u64;
+        let elapsed_micros = start_time.elapsed().as_micros() as u64;
 
-        if elapsed_in_micros < next_time_in_micros {
-            let time_to_wait = next_time_in_micros - elapsed_in_micros;
-            if time_to_wait > THRESHOLD_TO_SLEEP_THREAD_IN_MICROS {
-                thread::sleep(Duration::from_micros(time_to_wait - 1000));
+        if let Some(wait_time) = target_micros.checked_sub(elapsed_micros) {
+            if wait_time > THRESHOLD_TO_SLEEP_THREAD_IN_MICROS {
+                thread::sleep(Duration::from_micros(wait_time.saturating_sub(SLEEP_THREAD_IN_MICROS)));
             }
-            let time_to_wait = Duration::from_micros(next_time_in_micros);
-            while start_time.elapsed() < time_to_wait {}
+
+            let target_duration = Duration::from_micros(target_micros);
+            while start_time.elapsed() < target_duration {
+                std::hint::spin_loop();
+            }
         }
     }
 
