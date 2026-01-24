@@ -85,8 +85,8 @@ impl ClockAdjust {
         let freq = self.freq[voice_index as usize];
 
         let scaled_freq = match self.clock {
-            SidClock::Ntsc => min((freq * NTSC_FREQ_SCALE) >> 16, 0xffff),
-            _ => (freq * PAL_FREQ_SCALE) >> 16
+            SidClock::Ntsc => min((freq.saturating_mul(NTSC_FREQ_SCALE)) >> 16, 0xffff),
+            _ => (freq.saturating_mul(PAL_FREQ_SCALE)) >> 16
         };
 
         self.last_freq[voice_index as usize] = scaled_freq;
