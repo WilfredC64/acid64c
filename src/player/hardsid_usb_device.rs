@@ -282,8 +282,8 @@ impl HardsidUsbDevice {
     }
 
     pub fn disconnect(&mut self) {
-        if self.sid_device.is_some() {
-            self.sid_device.as_mut().unwrap().close();
+        if let Some(sid_device) = &mut self.sid_device {
+            sid_device.close();
             self.sid_device = None;
         }
 
