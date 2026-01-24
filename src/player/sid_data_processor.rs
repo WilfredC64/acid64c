@@ -130,8 +130,8 @@ impl SidDataProcessor {
         while !self.sid_write_fifo.is_empty() {
             if self.current_sid_write.is_none() {
                 self.current_sid_write = self.get_sid_write();
-                if self.current_sid_write.is_some() {
-                    let cycles = self.time_elapsed_in_cycles + self.current_sid_write.unwrap().cycles;
+                if let Some(current_sid_write) = self.current_sid_write {
+                    let cycles = self.time_elapsed_in_cycles + current_sid_write.cycles;
                     self.next_time_in_micros = (cycles as f64 / (self.cycles_per_second / 1000000.0)) as u128;
                 }
             }
@@ -144,16 +144,15 @@ impl SidDataProcessor {
     }
 
     pub fn get_next_event_in_millis(&mut self) -> u64 {
-        if self.current_time.is_some() && self.next_time_in_micros > 0 {
-            let now = self.current_time.unwrap().elapsed().as_micros();
-            if self.next_time_in_micros > now {
-                ((self.next_time_in_micros - now) / 1000) as u64
-            } else {
-                0
+        if let Some(current_time) = self.current_time {
+            if self.next_time_in_micros > 0 {
+                let now = current_time.elapsed().as_micros();
+                if self.next_time_in_micros > now {
+                    return ((self.next_time_in_micros - now) / 1000) as u64;
+                }
             }
-        } else {
-            0
         }
+        0
     }
 
     fn process_next_data(&mut self) {
