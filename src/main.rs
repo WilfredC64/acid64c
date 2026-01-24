@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2025 Wilfred Bos
+// Copyright (C) 2019 - 2026 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod config;
@@ -71,7 +71,7 @@ fn run() -> Result<(), String> {
 }
 
 fn print_usage() {
-    println!("ACID64 Console v1.10 - Copyright (c) 2003-2025 Wilfred Bos");
+    println!("ACID64 Console v1.10 - Copyright (c) 2003-2026 Wilfred Bos");
     println!("\nUsage: acid64c <options> <file_name>");
     println!("\n<Options>");
     println!("  -c: adjust clock for devices that don't support PAL/NTSC clock");
