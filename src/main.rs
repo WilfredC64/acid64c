@@ -63,10 +63,7 @@ fn run() -> Result<(), String> {
 
     player.setup_sldb_and_stil(config.hvsc_location, config.display_stil)?;
     player.set_file_name(&config.filename);
-
-    if config.song_number != -1 {
-        player.set_song_to_play(config.song_number);
-    }
+    player.set_song_to_play(config.song_number);
 
     let mut console_player = ConsolePlayer::new(player, config.display_stil);
     console_player.play()?;
