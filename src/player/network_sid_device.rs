@@ -6,7 +6,7 @@ use std::net::{TcpStream, Shutdown, ToSocketAddrs};
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
 
-use crate::utils::network;
+use crate::utils::network::{is_local_ip_address, is_loopback};
 use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
 use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
 
@@ -21,6 +21,7 @@ const MIN_CYCLES_AFTER_DELAY: u16 = 0x100;
 const BUFFER_HEADER_SIZE: usize = 4;
 const DEFAULT_DEVICE_COUNT_INTERFACE_V1: i32 = 2;
 const SOCKET_CONNECTION_TIMEOUT: u64 = 1000;
+const SOCKET_CONNECTION_TIMEOUT_LOCALHOST: u64 = 100;
 
 enum CommandResponse {
     Ok = 0,
@@ -239,14 +240,20 @@ impl NetworkSidDevice {
         self.disconnect();
         self.last_error = None;
 
-        if !network::is_local_ip_address(host_name) {
+        if !is_local_ip_address(host_name) {
             return Err(format!("{host_name} is not in the local network or invalid."));
         }
 
         let mut addresses = [host_name, port].join(":").to_socket_addrs().unwrap();
 
         if let Some(socket_address) = addresses.find(|socket| socket.is_ipv4()) {
-            if let Ok(stream) = TcpStream::connect_timeout(&socket_address, time::Duration::from_millis(SOCKET_CONNECTION_TIMEOUT)) {
+            let timeout = if is_loopback(&socket_address.ip().to_string()) {
+                time::Duration::from_millis(SOCKET_CONNECTION_TIMEOUT_LOCALHOST)
+            } else {
+                time::Duration::from_millis(SOCKET_CONNECTION_TIMEOUT)
+            };
+
+            if let Ok(stream) = TcpStream::connect_timeout(&socket_address, timeout) {
                 self.sid_device = Some(stream);
 
                 self.interface_version = self.get_version();
@@ -267,8 +274,8 @@ impl NetworkSidDevice {
     }
 
     pub fn disconnect(&mut self) {
-        if self.sid_device.is_some() {
-            self.sid_device.as_ref().unwrap().shutdown(Shutdown::Both).ok();
+        if let Some(sid_device) = &mut self.sid_device {
+            sid_device.shutdown(Shutdown::Both).ok();
             self.sid_device = None;
         }
         self.init_to_default();
@@ -738,8 +745,8 @@ impl NetworkSidDevice {
     }
 
     fn send_data(&mut self) -> CommandResponse {
-        if self.sid_device.is_some() {
-            let result = self.sid_device.as_ref().unwrap().write(&self.write_buffer[0..self.buffer_index]);
+        if let Some(sid_device) = &mut self.sid_device {
+            let result = sid_device.write(&self.write_buffer[0..self.buffer_index]);
             match result {
                 Ok(size) => {
                     if size != self.buffer_index {
@@ -758,8 +765,8 @@ impl NetworkSidDevice {
     }
 
     fn read_data(&mut self) -> (CommandResponse, Vec<u8>) {
-        if self.sid_device.is_some() {
-            let result = self.sid_device.as_ref().unwrap().read(&mut self.response_buffer);
+        if let Some(sid_device) = &mut self.sid_device {
+            let result = sid_device.read(&mut self.response_buffer);
 
             match result {
                 Ok(size) => {
