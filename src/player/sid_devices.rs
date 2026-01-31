@@ -6,6 +6,7 @@ use super::hardsid_usb_device::{HardsidUsbDevice, HardsidUsbDeviceFacade};
 use super::network_sid_device::{NetworkSidDevice, NetworkSidDeviceFacade};
 use super::sidblaster_usb_device::{SidBlasterUsbDevice, SidBlasterUsbDeviceFacade};
 use super::ultimate_device::{UltimateDevice, UltimateDeviceFacade};
+use super::usbsid_device::{UsbsidDevice, UsbsidDeviceFacade};
 use super::sid_device::SidModel;
 
 use std::sync::atomic::AtomicI32;
@@ -201,6 +202,15 @@ impl SidDevices {
         self
     }
 
+    pub fn connect_usbsid_device(mut self) -> Self {
+        let usbsid_connect_result = self.try_connect_usbsid_device();
+
+        if let Err(connection_result) = usbsid_connect_result {
+            self.errors.push(connection_result);
+        }
+        self
+    }
+    
     pub fn connect_network_device(mut self, ip_address: &str, port: &str) -> Self {
         let ns_connect_result = self.try_connect_network_device(ip_address, port);
 
@@ -260,6 +270,22 @@ impl SidDevices {
             Ok(())
         } else {
             Err(sb_connect_result.err().unwrap())
+        }
+    }
+
+    fn try_connect_usbsid_device(&mut self) -> Result<(), String> {
+        let mut usbsid_device = UsbsidDevice::new(Arc::clone(&self.abort_type));
+        let connect_result = usbsid_device.connect();
+        if connect_result.is_ok() {
+            let sid_count = usbsid_device.get_device_count();
+            let facade = UsbsidDeviceFacade { usbsid_device };
+            self.sid_devices.push(Box::new(facade));
+            self.device_sid_count.push(sid_count as u8);
+
+            self.retrieve_device_info(self.sid_devices.len() - 1);
+            Ok(())
+        } else {
+            Err(connect_result.err().unwrap())
         }
     }
 

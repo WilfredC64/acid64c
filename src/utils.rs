@@ -9,3 +9,4 @@ pub mod keyboard;
 pub mod network;
 pub mod sid_file;
 pub mod sidblaster;
+pub mod mossid;

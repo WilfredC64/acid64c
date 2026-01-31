@@ -13,6 +13,13 @@ pub enum SidModel {
     Mos8580 = 1
 }
 
+#[derive(Copy, Clone, Default)]
+pub struct SidWrite {
+    pub cycles: u16,
+    pub reg: u8,
+    pub data: u8,
+}
+
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum SamplingMethod {
@@ -32,14 +39,16 @@ pub enum DeviceId {
     HardsidUsb = 0,
     NetworkSidDevice = 1,
     UltimateDevice = 2,
-    SidBlaster = 3
+    SidBlaster = 3,
+    Usbsid = 4,
 }
 
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct DeviceInfo {
     pub id: String,
-    pub name: String
+    pub name: String,
+    pub socket_count: i32
 }
 
 pub const DUMMY_REG: u8 = 0x1e;

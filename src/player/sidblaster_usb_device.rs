@@ -6,7 +6,7 @@ use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, SamplingMethod, Si
 use super::sidblaster_scheduler::{SidBlasterScheduler, SidWrite, SID_WRITES_BUFFER_SIZE, MAX_CYCLES_IN_BUFFER};
 use super::{ABORT_NO, MIN_CYCLE_SID_WRITE};
 use crate::player::ABORTED;
-use crate::utils::{armsid, armsid::SidFilter, fpgasid, sidblaster};
+use crate::utils::{armsid, armsid::SidFilter, fpgasid, mossid, sidblaster};
 
 use std::sync::atomic::{Ordering, AtomicI32, AtomicU32, AtomicBool};
 use std::sync::Arc;
@@ -223,7 +223,7 @@ impl SidBlasterUsbDevice {
         self.last_error = None;
 
         let device_info = sidblaster::detect_devices()?;
-        self.device_names = device_info.iter().map(|(id, name)| DeviceInfo { id: id.to_string(), name: name.to_string() }).collect();
+        self.device_names = device_info.iter().map(|(id, name)| DeviceInfo { id: id.to_string(), name: name.to_string(), socket_count: 1 }).collect();
         self.sid_count = self.device_names.len() as i32;
 
         if self.sid_count > 0 {
@@ -321,14 +321,11 @@ impl SidBlasterUsbDevice {
     }
 
     fn configure_sid_replacement(&mut self, dev_nr: i32, sid_model: &SidModel, sid_filter: &SidFilter) {
-        let sid_writes = armsid::configure_armsid(sid_model, sid_filter);
-        for sid_write in sid_writes {
-            self.write_direct(dev_nr, sid_write.cycles, sid_write.reg, sid_write.data);
-        }
+        let arm_writes = armsid::configure_armsid(sid_model, sid_filter);
+        let fpga_writes = fpgasid::configure_fpgasid(sid_model);
 
-        let sid_writes = fpgasid::configure_fpgasid(sid_model);
-        for sid_write in sid_writes {
-            self.write_direct(dev_nr, sid_write.cycles, sid_write.reg, sid_write.data);
+        for sid_write in arm_writes.into_iter().chain(fpga_writes) {
+            self.write_direct(dev_nr, sid_write.cycles as u32, sid_write.reg, sid_write.data);
         }
     }
 
@@ -372,26 +369,11 @@ impl SidBlasterUsbDevice {
 
     fn silent_sid(&mut self, dev_nr: i32, base_reg: u8) {
         if self.number_of_sids > 0 && self.is_connected() {
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x01, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x08, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x07, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0f, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0e, 0);
+            let sid_writes = mossid::silent_sid_sequence(base_reg, true);
 
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x04, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x05, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x06, 0);
-
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0b, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0c, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0d, 0);
-
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x12, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x13, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x14, 0);
-
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x18, 0);
+            for sid_write in sid_writes {
+                self.write_direct(dev_nr, sid_write.cycles as u32, base_reg + sid_write.reg, sid_write.data);
+            }
 
             self.init_write_state();
         }
@@ -399,67 +381,26 @@ impl SidBlasterUsbDevice {
 
     pub fn reset_all_sids(&mut self, dev_nr: i32) {
         if self.is_connected() {
-            for i in 0..self.sid_count {
-                let base_reg = i << 5;
-                self.reset_sid(dev_nr, base_reg as u8);
+            let sid_writes = mossid::reset_all_sids_sequence(self.sid_count, true);
+
+            for sid_write in sid_writes {
+                self.write_direct(dev_nr, sid_write.cycles as u32, sid_write.reg, sid_write.data);
             }
-        }
-    }
-
-    pub fn reset_active_sids(&mut self, dev_nr: i32) {
-        if self.is_connected() {
-            self.reset_sid(dev_nr, 0);
-        }
-    }
-
-    fn reset_sid(&mut self, dev_nr: i32, base_reg: u8) {
-        if self.number_of_sids > 0 && self.is_connected() {
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, 0x18, 0x00);
-
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x01, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x07, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x08, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0e, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0f, 0);
-
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x04, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x0b, 0);
-            self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, base_reg + 0x12, 0);
-
-            self.reset_sid_register(dev_nr, base_reg + 0x02);
-            self.reset_sid_register(dev_nr, base_reg + 0x03);
-            self.reset_sid_register(dev_nr, base_reg + 0x04);
-            self.reset_sid_register(dev_nr, base_reg + 0x05);
-            self.reset_sid_register(dev_nr, base_reg + 0x06);
-
-            self.reset_sid_register(dev_nr, base_reg + 0x09);
-            self.reset_sid_register(dev_nr, base_reg + 0x0a);
-            self.reset_sid_register(dev_nr, base_reg + 0x0b);
-            self.reset_sid_register(dev_nr, base_reg + 0x0c);
-            self.reset_sid_register(dev_nr, base_reg + 0x0d);
-
-            self.reset_sid_register(dev_nr, base_reg + 0x10);
-            self.reset_sid_register(dev_nr, base_reg + 0x11);
-            self.reset_sid_register(dev_nr, base_reg + 0x12);
-            self.reset_sid_register(dev_nr, base_reg + 0x13);
-            self.reset_sid_register(dev_nr, base_reg + 0x14);
-
-            self.reset_sid_register(dev_nr, base_reg + 0x15);
-            self.reset_sid_register(dev_nr, base_reg + 0x16);
-            self.reset_sid_register(dev_nr, base_reg + 0x17);
-            self.reset_sid_register(dev_nr, base_reg + 0x19);
 
             self.init_write_state();
         }
     }
 
-    fn reset_sid_register(&mut self, dev_nr: i32, reg: u8) {
-        self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0xff);
-        self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x08);
-        let base_reg = reg & 0xe0;
-        self.write_direct(dev_nr, 50, base_reg + DUMMY_REG, 0);
-        self.write_direct(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x00);
+    pub fn reset_active_sids(&mut self, dev_nr: i32) {
+        if self.number_of_sids > 0 && self.is_connected() {
+            let sid_writes = mossid::reset_all_sids_sequence(self.number_of_sids, true);
+
+            for sid_write in sid_writes {
+                self.write_direct(dev_nr, sid_write.cycles as u32, sid_write.reg, sid_write.data);
+            }
+
+            self.init_write_state();
+        }
     }
 
     pub fn reset_all_buffers(&mut self) {

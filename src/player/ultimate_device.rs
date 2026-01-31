@@ -308,7 +308,7 @@ impl UltimateDevice {
     }
 
     pub fn get_device_info(&mut self, _dev_nr: i32) -> DeviceInfo {
-        DeviceInfo { id: "Ultimate Device".to_string(), name: "Ultimate Device".to_string() }
+        DeviceInfo { id: "Ultimate Device".to_string(), name: "Ultimate Device".to_string(), socket_count: -1 }
     }
 
     pub fn set_sid_clock(&mut self, sid_clock: SidClock) {

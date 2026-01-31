@@ -29,7 +29,8 @@ pub struct ConsolePlayer {
     last_fast_forward: Arc<Mutex<Instant>>,
     player_output: Arc<Mutex<PlayerOutput>>,
     sid_info: Arc<Mutex<SidInfo>>,
-    device_names: Arc<Mutex<Vec<String>>>
+    device_names: Arc<Mutex<Vec<String>>>,
+    device_numbers: Vec<i32>,
 }
 
 impl ConsolePlayer {
@@ -43,6 +44,7 @@ impl ConsolePlayer {
         let sid_info = player_arc.lock().get_sid_info_ref();
         let abort_type = player_arc.lock().get_aborted_ref();
         let device_names = player_arc.lock().get_device_names();
+        let device_numbers = player_arc.lock().get_device_numbers();
 
         ConsolePlayer {
             player: player_arc,
@@ -54,7 +56,8 @@ impl ConsolePlayer {
             last_fast_forward,
             player_output,
             sid_info,
-            device_names
+            device_names,
+            device_numbers
         }
     }
 
@@ -377,13 +380,29 @@ impl ConsolePlayer {
         let player_output = self.player_output.lock();
         let number_of_songs = sid_info.number_of_songs;
         let number_of_sids = sid_info.number_of_sids;
-        let song_number = player_output.song_number;
         let device_number = player_output.device_number;
+        let device_numbers = &self.device_numbers;
+        let song_number = if player_output.song_number == -1 {
+            sid_info.default_song
+        } else {
+            player_output.song_number
+        };
 
         if number_of_sids > 1 {
             println!("\nPlaying song {} of {} on devices:", song_number + 1, number_of_songs);
-            for i in 0..number_of_sids {
-                println!("SID {} -> {:>2}: {}", i + 1, device_number + 1, self.device_names.lock()[device_number as usize]);
+            let device_names = self.device_names.lock();
+            if device_numbers.len() == 1 {
+                for i in 0..number_of_sids {
+                    println!("SID {} -> {:>2}: {}", i + 1, device_number + 1, device_names[device_number as usize]);
+                }
+            } else {
+                for i in 0..number_of_sids {
+                    if i < device_numbers.len() as i32 {
+                        println!("SID {} -> {:>2}: {}", i + 1, device_numbers[i as usize] + 1, device_names[device_numbers[i as usize] as usize]);
+                    } else {
+                        println!("SID {} -> Unavailable", i + 1);
+                    }
+                }
             }
         } else {
             println!("\nPlaying song {} of {} on device {}: {}", song_number + 1, number_of_songs, device_number + 1, self.device_names.lock()[device_number as usize]);

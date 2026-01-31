@@ -5,10 +5,10 @@ use std::io::prelude::*;
 use std::net::{TcpStream, Shutdown, ToSocketAddrs};
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::{sync::Arc, str, thread, time};
-
+use crate::utils::mossid;
 use crate::utils::network::{is_local_ip_address, is_loopback};
 use super::sid_device::{DeviceId, DeviceInfo, DeviceResponse, DUMMY_REG, SamplingMethod, SidClock, SidDevice, SidModel};
-use super::{ABORT_NO, ABORTING, MIN_CYCLE_SID_WRITE};
+use super::{ABORT_NO, ABORTING};
 
 const WRITE_BUFFER_SIZE: usize = 1024;      // 1 KB maximum to avoid network overhead
 const RESPONSE_BUFFER_SIZE: usize = 260;
@@ -342,7 +342,7 @@ impl NetworkSidDevice {
             "Default 8580".to_string()
         };
 
-        DeviceInfo { id: device_name.clone(), name: device_name }
+        DeviceInfo { id: device_name.clone(), name: device_name, socket_count: -1 }
     }
 
     pub fn set_sid_count(&mut self, sid_count: i32) {
@@ -418,26 +418,9 @@ impl NetworkSidDevice {
     }
 
     fn silent_sid(&mut self, dev_nr: i32, write_volume: bool) {
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x00, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x01, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x07, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x08, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0e, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0f, 0);
-
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x04, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0b, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x12, 0);
-
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x05, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x06, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0c, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0d, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x13, 0);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x14, 0);
-
-        if write_volume {
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x18, 0);
+        let sid_writes = mossid::silent_sid_sequence(0, write_volume);
+        for sid_write in sid_writes {
+            self.write(dev_nr, sid_write.cycles as u32, sid_write.reg, sid_write.data);
         }
     }
 
@@ -471,47 +454,11 @@ impl NetworkSidDevice {
 
     fn reset_sid(&mut self, dev_nr: i32) {
         if self.number_of_sids > 0 {
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x00, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x01, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x07, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x08, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0e, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0f, 0);
-
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x04, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x0b, 0);
-            self.write(dev_nr, MIN_CYCLE_SID_WRITE, 0x12, 0);
-
-            self.reset_sid_register(dev_nr, 0x02);
-            self.reset_sid_register(dev_nr, 0x03);
-            self.reset_sid_register(dev_nr, 0x04);
-            self.reset_sid_register(dev_nr, 0x05);
-            self.reset_sid_register(dev_nr, 0x06);
-
-            self.reset_sid_register(dev_nr, 0x09);
-            self.reset_sid_register(dev_nr, 0x0a);
-            self.reset_sid_register(dev_nr, 0x0b);
-            self.reset_sid_register(dev_nr, 0x0c);
-            self.reset_sid_register(dev_nr, 0x0d);
-
-            self.reset_sid_register(dev_nr, 0x10);
-            self.reset_sid_register(dev_nr, 0x11);
-            self.reset_sid_register(dev_nr, 0x12);
-            self.reset_sid_register(dev_nr, 0x13);
-            self.reset_sid_register(dev_nr, 0x14);
-
-            self.reset_sid_register(dev_nr, 0x15);
-            self.reset_sid_register(dev_nr, 0x16);
-            self.reset_sid_register(dev_nr, 0x17);
-            self.reset_sid_register(dev_nr, 0x19);
+            let sid_writes = mossid::reset_sid_sequence(0, false);
+            for sid_write in sid_writes {
+                self.write(dev_nr, sid_write.cycles as u32, sid_write.reg, sid_write.data);
+            }
         }
-    }
-
-    fn reset_sid_register(&mut self, dev_nr: i32, reg: u8) {
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0xff);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x08);
-        self.dummy_write(dev_nr, 50);
-        self.write(dev_nr, MIN_CYCLE_SID_WRITE, reg, 0x00);
     }
 
     pub fn reset_all_buffers(&mut self, dev_nr: i32) {

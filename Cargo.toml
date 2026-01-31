@@ -14,6 +14,7 @@ ahash = "0.8"
 atomicring = "1.2"
 attohttpc = { version = "0.30", features = ["multipart-form"] }
 chrono = "0.4"
+crossbeam-channel = "0.5.15"
 crossterm = "0.29"
 encoding = "0.2"
 encoding_rs = "0.8"
@@ -23,6 +24,8 @@ libloading = "0.9"
 parking_lot = "0.12"
 timer = "0.2"
 thread-priority = "3.0"
+ringbuf = "0.4.8"
+rusb = "0.9"
 
 [dependencies.libftd2xx]
 version = "0.33"

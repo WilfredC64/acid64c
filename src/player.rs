@@ -16,6 +16,8 @@ mod sid_info;
 mod sldb;
 mod stil;
 mod ultimate_device;
+mod usbsid_device;
+mod usbsid_scheduler;
 
 use parking_lot::Mutex;
 use std::fs::read;
@@ -198,6 +200,10 @@ impl Player {
 
     pub fn get_channel_sender(&self) -> SyncSender<PlayerCommand> {
         SyncSender::clone(&self.cmd_sender)
+    }
+
+    pub fn get_device_numbers(&self) -> Vec<i32> {
+        self.device_numbers.clone()
     }
 
     pub fn set_device_numbers(&mut self, device_numbers: &[i32]) {
@@ -443,6 +449,7 @@ impl Player {
     pub fn init_devices(&mut self) -> Result<(), String> {
         if self.sid_device.is_none() {
             let mut devices = SidDevices::new(Arc::clone(&self.abort_type))
+                .connect_usbsid_device()
                 .connect_hardsid_device()
                 .connect_sidblaster()
                 .connect_network_device(&self.host_name_sid_device, &self.port_sid_device)
