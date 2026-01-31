@@ -545,11 +545,16 @@ impl HardsidUsbDevice {
 
     fn reset_sid(&mut self, dev_nr: i32, base_reg: u8) {
         if self.number_of_sids > 0 && self.is_connected() {
+            let temp_use_native_clock = self.use_native_device_clock;
+            self.use_native_device_clock = true;
+
             let sid_writes = mossid::reset_sid_sequence(base_reg, true);
 
             for sid_write in sid_writes {
                 self.write_direct(dev_nr, sid_write.cycles as u32, sid_write.reg, sid_write.data);
             }
+
+            self.use_native_device_clock = temp_use_native_clock;
         }
     }
 
