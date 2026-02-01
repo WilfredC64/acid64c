@@ -415,7 +415,7 @@ impl UsbsidDevice {
 
         let new_dev_index = self.device_mappings[dev_nr as usize];
         if new_dev_index != self.active_device_index {
-            let _ = self.in_cmd_sender.send((UsbSidCommand::SetDevice, dev_nr));
+            let _ = self.in_cmd_sender.send((UsbSidCommand::SetDevice, new_dev_index));
             self.active_device_index = new_dev_index;
         }
 
