@@ -413,10 +413,10 @@ impl UsbsidDevice {
             return DeviceResponse::Error
         }
 
-        let dev_nr = self.device_mappings[dev_nr as usize];
-        if dev_nr != self.active_device_index {
+        let new_dev_index = self.device_mappings[dev_nr as usize];
+        if new_dev_index != self.active_device_index {
             let _ = self.in_cmd_sender.send((UsbSidCommand::SetDevice, dev_nr));
-            self.active_device_index = dev_nr;
+            self.active_device_index = new_dev_index;
         }
 
         let mut cycles = cycles;
