@@ -1,4 +1,4 @@
-// Copyright (C) 2019 - 2025 Wilfred Bos
+// Copyright (C) 2019 - 2026 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 mod clock;
@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::{thread, time::Duration};
 use std::time::Instant;
 use parking_lot::Mutex;
+use crossterm::terminal;
 
 const LOOP_RATE_IN_MS: u64 = 50;
 const FAST_FORWARD_STOP_DELAY_IN_MILLIS: u128 = 600;
@@ -82,6 +83,8 @@ impl ConsolePlayer {
         let number_of_tunes = self.sid_info.lock().number_of_songs;
         self.paused = false;
 
+        terminal::enable_raw_mode().map_err(|error| error.to_string())?;
+
         loop {
             if let Some(key) = keyboard::get_char_from_input() {
                 match key {
@@ -116,9 +119,13 @@ impl ConsolePlayer {
                             player_thread = self.start_player(&mut clock);
 
                             clock.stop();
+                            terminal::disable_raw_mode().map_err(|error| error.to_string())?;
+
                             if old_song_number != song_number {
                                 self.refresh_info();
                             }
+
+                            terminal::enable_raw_mode().map_err(|error| error.to_string())?;
                             clock.start();
 
                             keyboard::flush_keyboard_buffer();
@@ -156,6 +163,8 @@ impl ConsolePlayer {
         clock.stop();
         self.stop_player(player_thread);
         self.player.lock().stop_player();
+
+        terminal::disable_raw_mode().map_err(|error| error.to_string())?;
 
         let last_error = self.player.lock().get_last_error();
         if let Some(last_error) = last_error {
@@ -309,7 +318,7 @@ impl ConsolePlayer {
         }
     }
 
-    pub fn print_info(&mut self) {
+    fn print_info(&mut self) {
         self.print_filename();
         self.print_sid_model();
         self.print_c64_model();
