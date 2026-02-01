@@ -19,7 +19,16 @@ impl Acid64Library {
     }
 
     pub fn load() -> Result<Acid64Library, String> {
-        let a64lib = unsafe { Library::new("acid64pro") };
+        #[cfg(target_os = "windows")]
+        let filename = "acid64pro.dll";
+
+        #[cfg(target_os = "linux")]
+        let filename = "libacid64pro.so";
+
+        #[cfg(target_os = "macos")]
+        let filename = "libacid64pro.dylib";
+
+        let a64lib = unsafe { Library::new(filename) };
         if a64lib.is_err() {
             return Err("acid64pro library could not be loaded.".to_string());
         }
