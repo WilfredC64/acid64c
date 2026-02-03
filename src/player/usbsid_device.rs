@@ -281,7 +281,7 @@ impl UsbsidDevice {
         self.device_mappings = vec![];
         self.device_init_done = vec![];
 
-        self.cycles_in_buffer.store(0, Ordering::SeqCst);
+        self.cycles_in_buffer.store(0, Ordering::Relaxed);
     }
 
     pub fn disconnect_with_error(&mut self, error_message: String) {
