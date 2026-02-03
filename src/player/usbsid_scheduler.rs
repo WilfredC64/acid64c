@@ -65,6 +65,7 @@ pub enum SidClock {
     Ntsc = 2,
 }
 
+#[derive(Default)]
 pub struct UsbSidConfig {
     pub devices: Vec<DeviceInfo>,
 }
@@ -137,6 +138,8 @@ impl UsbSidScheduler {
                 return;
             }
 
+            let mut byte_buffer = [0u8; MAX_SID_WRITES * 4];
+
             loop {
                 if Self::is_aborted(&aborted) {
                     break;
@@ -204,15 +207,13 @@ impl UsbSidScheduler {
                     continue;
                 }
 
-                let mut byte_buffer = [0u8; MAX_SID_WRITES * 4];
-
                 let mut total_cycles: u32 = 0;
                 for (chunk, sid_write) in byte_buffer.chunks_exact_mut(4).zip(&write_buffer[..count]) {
                     let cycles = sid_write.cycles.saturating_sub(1);
                     chunk[0] = sid_write.reg;
                     chunk[1] = sid_write.data;
                     chunk[2] = (cycles >> 8) as u8;
-                    chunk[3] = (cycles & 0xFF) as u8;
+                    chunk[3] = cycles as u8;
 
                     total_cycles += sid_write.cycles as u32;
                 }
@@ -229,7 +230,7 @@ impl UsbSidScheduler {
                 }
             }
 
-            cycles_in_buffer.store(0, Ordering::SeqCst);
+            cycles_in_buffer.store(0, Ordering::Relaxed);
             queue.clear();
             aborted.store(true, Ordering::SeqCst);
         }));
@@ -242,9 +243,7 @@ impl UsbSidScheduler {
     }
 
     fn detect_devices(&mut self) -> Result<UsbSidConfig, Error> {
-        let mut usbsid_config = UsbSidConfig {
-            devices: vec![],
-        };
+        let mut usbsid_config = UsbSidConfig::default();
 
         let mut index = 0;
         for device in rusb::devices()?.iter() {
@@ -261,46 +260,24 @@ impl UsbSidScheduler {
     fn configure_device(&mut self, device: &Device<GlobalContext>, index: usize, usbsid_config: &mut UsbSidConfig, device_name: &str) -> Result<(), Error> {
         let config = device.config_descriptor(0)?;
 
-        let interface = config.interfaces()
-            .find(|interface| {
-                interface.descriptors().any(|desc| {
-                    desc.endpoint_descriptors().any(|ep| {
-                        ep.transfer_type() == rusb::TransferType::Bulk
-                    })
-                })
+        let (interface_number, in_endpoint, out_endpoint) = config.interfaces()
+            .flat_map(|i| i.descriptors())
+            .find_map(|d| {
+                let bulk_endpoints: Vec<EndpointDescriptor> = d.endpoint_descriptors()
+                    .filter(|ep| ep.transfer_type() == rusb::TransferType::Bulk)
+                    .collect();
+
+                let in_addr = bulk_endpoints.iter()
+                    .find(|ep| ep.direction() == rusb::Direction::In && ep.address() == EP_IN_ADDR)?
+                    .address();
+
+                let out_addr = bulk_endpoints.iter()
+                    .find(|ep| ep.direction() == rusb::Direction::Out && ep.address() == EP_OUT_ADDR)?
+                    .address();
+
+                Some((d.interface_number(), in_addr, out_addr))
             })
             .ok_or(Error::Other)?;
-
-        let in_endpoint_filter = |endpoint: &EndpointDescriptor| {
-            endpoint.direction() == rusb::Direction::In &&
-                endpoint.address() == EP_IN_ADDR
-
-        };
-        let out_endpoint_filter = |endpoint: &EndpointDescriptor| {
-            endpoint.direction() == rusb::Direction::Out &&
-                endpoint.address() == EP_OUT_ADDR
-        };
-
-        let interface_desc = interface.descriptors().next().unwrap();
-
-        let mut in_endpoint: Option<EndpointDescriptor> = None;
-        let mut out_endpoint: Option<EndpointDescriptor> = None;
-
-        for ep in interface_desc.endpoint_descriptors() {
-            if in_endpoint.is_none() && in_endpoint_filter(&ep) {
-                in_endpoint = Some(ep);
-                if out_endpoint.is_some() { break; }
-            } else if out_endpoint.is_none() && out_endpoint_filter(&ep) {
-                out_endpoint = Some(ep);
-                if in_endpoint.is_some() { break; }
-            }
-        }
-
-        let in_endpoint = in_endpoint.ok_or(Error::Other)?;
-        let out_endpoint = out_endpoint.ok_or(Error::Other)?;
-
-        let interface_desc = interface.descriptors().next().ok_or(Error::Other)?;
-        let interface_number = interface_desc.interface_number();
 
         let mut handle = device.open()?;
 
@@ -309,7 +286,7 @@ impl UsbSidScheduler {
         }
         handle.claim_interface(interface_number)?;
 
-        let timeout = Duration::from_secs(0);
+        let timeout = Duration::from_millis(0);
 
         handle.write_control(0x21, 0x22, ACM_CTRL_DTR | ACM_CTRL_RTS, 0, &[], timeout)?;
         let rc = handle.write_control(0x21, 0x20, 0, 0, &ENCODING, timeout)?;
@@ -319,8 +296,8 @@ impl UsbSidScheduler {
             return Err(Error::Other);
         }
 
-        self.in_endpoint.push(in_endpoint.address());
-        self.out_endpoint.push(out_endpoint.address());
+        self.in_endpoint.push(in_endpoint);
+        self.out_endpoint.push(out_endpoint);
 
         let socket_count = Self::usb_get_num_sids(&mut handle)?;
 
@@ -328,7 +305,7 @@ impl UsbSidScheduler {
         usbsid_config.devices.push(DeviceInfo {
             name: format!("{}-{}", device_name, id),
             id,
-            socket_count: socket_count as i32
+            socket_count
         });
 
         if let Some(ref mut handles) = self.dev_handles {
@@ -374,7 +351,7 @@ impl UsbSidScheduler {
         }
     }
 
-    fn usb_get_num_sids(handle: &mut rusb::DeviceHandle<GlobalContext>) -> rusb::Result<u8> {
+    fn usb_get_num_sids(handle: &mut rusb::DeviceHandle<GlobalContext>) -> rusb::Result<i32> {
         let write_buffer = [
             COMMAND << 6 | CONFIG,
             CMD_GET_NUM_SIDS,
@@ -391,7 +368,7 @@ impl UsbSidScheduler {
         let size = handle.read_bulk(EP_IN_ADDR, &mut read_buffer, timeout)?;
 
         if size == 1 {
-            Ok(read_buffer[0])
+            Ok(read_buffer[0] as i32)
         } else {
             Err(Error::Other)
         }
@@ -440,19 +417,25 @@ impl UsbSidScheduler {
         Self::mute_sids(handle, socket_count)
     }
 
-    fn mute_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
-        let mut sid_writes: Vec<SidWrite> = vec![];
-        for sid_index in 0..socket_count {
-            let writes = mossid::silent_sid_sequence((sid_index * 0x20) as u8, false);
-            sid_writes.extend_from_slice(&writes);
-        }
-
-        let mut buffer = vec![];
+    fn push_sid_writes(buffer: &mut Vec<u8>, sid_writes: &Vec<SidWrite>) {
         for sid_write in sid_writes {
-            buffer.push(sid_write.reg);
-            buffer.push(sid_write.data);
-            buffer.push((sid_write.cycles >> 8) as u8);
-            buffer.push(sid_write.cycles as u8);
+            Self::push_sid_write(buffer, sid_write);
+        }
+    }
+
+    fn push_sid_write(buffer: &mut Vec<u8>, sid_write: &SidWrite) {
+        buffer.push(sid_write.reg);
+        buffer.push(sid_write.data);
+        buffer.push((sid_write.cycles >> 8) as u8);
+        buffer.push(sid_write.cycles as u8);
+    }
+
+    fn mute_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
+        let mut buffer = vec![];
+
+        for sid_index in 0..socket_count {
+            let sid_writes = mossid::silent_sid_sequence((sid_index * 0x20) as u8, false);
+            Self::push_sid_writes(&mut buffer, &sid_writes);
         }
 
         Self::usbsid_buffer_multi_write(handle, &buffer)
@@ -479,24 +462,17 @@ impl UsbSidScheduler {
 
         buffer.reserve((arm_writes.len() + fpga_writes.len()) * 4);
 
-        for sid_write in arm_writes.into_iter().chain(fpga_writes) {
-            buffer.push(base_reg + sid_write.reg);
-            buffer.push(sid_write.data);
-            buffer.push((sid_write.cycles >> 8) as u8);
-            buffer.push(sid_write.cycles as u8);
+        for mut sid_write in arm_writes.into_iter().chain(fpga_writes) {
+            sid_write.reg += base_reg;
+            Self::push_sid_write(buffer, &sid_write);
         }
     }
 
     fn reset_all_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
-        let sid_writes = mossid::reset_all_sids_sequence(socket_count, true);
-
         let mut buffer = vec![];
-        for sid_write in sid_writes {
-            buffer.push(sid_write.reg);
-            buffer.push(sid_write.data);
-            buffer.push((sid_write.cycles >> 8) as u8);
-            buffer.push(sid_write.cycles as u8);
-        }
+
+        let sid_writes = mossid::reset_all_sids_sequence(socket_count, true);
+        Self::push_sid_writes(&mut buffer, &sid_writes);
 
         Self::usbsid_buffer_multi_write(handle, &buffer)
     }
@@ -505,10 +481,7 @@ impl UsbSidScheduler {
         let mut buffer = vec![];
 
         let sid_writes = mossid::reset_sid_sequence(base_reg, true);
-        for sid_write in sid_writes {
-            let cycles = sid_write.cycles;
-            buffer.extend_from_slice(&[sid_write.reg, sid_write.data, (cycles >> 8) as u8, (cycles & 0xFF) as u8]);
-        }
+        Self::push_sid_writes(&mut buffer, &sid_writes);
 
         Self::usbsid_buffer_multi_write(handle, &buffer)
     }
