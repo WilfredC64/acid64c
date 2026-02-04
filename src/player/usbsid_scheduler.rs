@@ -7,8 +7,8 @@ use std::{cmp, thread, time::Duration};
 use crossbeam_channel::{Receiver};
 use ringbuf::{SharedRb, CachingCons};
 use ringbuf::storage::Heap;
-use ringbuf::traits::Consumer;
-use rusb::{Device, EndpointDescriptor, GlobalContext, Error};
+use ringbuf::traits::{Consumer, Observer};
+use rusb::{Device, GlobalContext, Error};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 
 use crate::player::sid_device::{DeviceInfo, SidModel, SidWrite};
@@ -43,7 +43,6 @@ const CMD_SET_STEREO: u8 = 0x89;
 const CMD_SET_CLOCK: u8 = 0x50;
 
 pub enum UsbSidCommand {
-    Abort,
     ClearBuffer,
     SetDevice,
     SetClock,
@@ -76,8 +75,6 @@ pub struct UsbSidScheduler {
     aborted: Arc<AtomicBool>,
 
     dev_handles: Option<Vec<rusb::DeviceHandle<GlobalContext>>>,
-    in_endpoint: Vec<u8>,
-    out_endpoint: Vec<u8>,
     cycles_in_buffer: Arc<AtomicU32>,
 }
 
@@ -98,8 +95,6 @@ impl UsbSidScheduler {
             sid_writer_thread: None,
             aborted,
             dev_handles: Some(vec![]),
-            in_endpoint: vec![],
-            out_endpoint: vec![],
             cycles_in_buffer
         }
     }
@@ -108,7 +103,7 @@ impl UsbSidScheduler {
         self.aborted.store(true, Ordering::SeqCst);
 
         if self.sid_writer_thread.is_some() {
-            let _ = self.sid_writer_thread.take().unwrap().join().ok();
+            let _ = self.sid_writer_thread.take().unwrap().join();
         }
     }
 
@@ -122,9 +117,8 @@ impl UsbSidScheduler {
         }
 
         let mut queue = self.queue.take().ok_or(ERROR_STARTING_SCHEDULER.to_string())?;
-        let mut handles = self.dev_handles.take().ok_or(ERROR_STARTING_SCHEDULER.to_string())?;
+        let handles = self.dev_handles.take().ok_or(ERROR_STARTING_SCHEDULER.to_string())?;
 
-        let mut write_buffer = [SidWrite::default(); MAX_SID_WRITES];
         let cycles_in_buffer = self.cycles_in_buffer.clone();
         let devices = usbsid_config.devices.clone();
         let aborted = self.aborted.clone();
@@ -132,110 +126,96 @@ impl UsbSidScheduler {
         self.sid_writer_thread = Some(thread::spawn(move || {
             let _ = set_current_thread_priority(ThreadPriority::Max);
 
-            let mut device_index = 0;
-            if Self::config_sids(&mut handles[device_index], devices[device_index].socket_count).is_err() {
+            if Self::run_usbsid_writer_loop(&handles, &devices, &mut queue, &cmd_receiver, &cycles_in_buffer, &aborted).is_err() {
                 aborted.store(true, Ordering::SeqCst);
-                return;
-            }
-
-            let mut byte_buffer = [0u8; MAX_SID_WRITES * 4];
-
-            loop {
-                if Self::is_aborted(&aborted) {
-                    break;
-                }
-
-                let recv_result = cmd_receiver.try_recv();
-                if let Ok((command, device)) = recv_result {
-                    match command {
-                        UsbSidCommand::Abort => {
-                            if Self::mute_sids(&mut handles[device_index], devices[device_index].socket_count).is_err() {
-                                aborted.store(true, Ordering::SeqCst);
-                            }
-                            break;
-                        }
-                        UsbSidCommand::ClearBuffer => {
-                            cycles_in_buffer.store(0, Ordering::Relaxed);
-                            queue.clear();
-                        }
-                        UsbSidCommand::MuteAll => {
-                            if Self::mute_sids(&mut handles[device_index], devices[device_index].socket_count).is_err() {
-                                aborted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                        }
-                        UsbSidCommand::SetDevice => {
-                            device_index = device as usize;
-                            if Self::config_sids(&mut handles[device_index], devices[device_index].socket_count).is_err() {
-                                aborted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                        }
-                        UsbSidCommand::SetClock => {
-                            let clock_type = if device == 0 { SidClock::Pal } else { SidClock::Ntsc };
-                            if Self::usb_set_clock(&mut handles[device_index], clock_type).is_err() {
-                                aborted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                        }
-                        UsbSidCommand::SetModel => {
-                            let sid_model = if device == 0 { SidModel::Mos6581 } else { SidModel::Mos8580 };
-                            if Self::set_sid_model_for_all_sids(&mut handles[device_index], devices[device_index].socket_count, &sid_model).is_err() {
-                                aborted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                        }
-                        UsbSidCommand::Reset => {
-                            if Self::reset_active_sids(&mut handles[device_index], device as u8).is_err() {
-                                aborted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                        }
-                        UsbSidCommand::ResetAll => {
-                            if Self::reset_all_sids(&mut handles[device_index], devices[device_index].socket_count).is_err() {
-                                aborted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                let count = queue.pop_slice(&mut write_buffer);
-
-                if count == 0 {
-                    thread::sleep(Duration::from_millis(BUFFER_EMPTY_DELAY_IN_MILLIS));
-                    continue;
-                }
-
-                let mut total_cycles: u32 = 0;
-                for (chunk, sid_write) in byte_buffer.chunks_exact_mut(4).zip(&write_buffer[..count]) {
-                    let cycles = sid_write.cycles.saturating_sub(1);
-                    chunk[0] = sid_write.reg;
-                    chunk[1] = sid_write.data;
-                    chunk[2] = (cycles >> 8) as u8;
-                    chunk[3] = cycles as u8;
-
-                    total_cycles += sid_write.cycles as u32;
-                }
-
-                if cycles_in_buffer.load(Ordering::Relaxed) >= total_cycles {
-                    cycles_in_buffer.fetch_sub(total_cycles, Ordering::Relaxed);
-                } else {
-                    cycles_in_buffer.store(0, Ordering::Relaxed);
-                }
-
-                if Self::usbsid_buffer_multi_write(&mut handles[device_index], &byte_buffer[..(count * 4)]).is_err() {
-                    aborted.store(true, Ordering::SeqCst);
-                    break;
-                }
             }
 
             cycles_in_buffer.store(0, Ordering::Relaxed);
             queue.clear();
-            aborted.store(true, Ordering::SeqCst);
+            Self::cleanup_handles(&handles);
         }));
 
         Ok(usbsid_config)
+    }
+
+    fn run_usbsid_writer_loop(
+        handles: &[rusb::DeviceHandle<GlobalContext>],
+        devices: &[DeviceInfo],
+        queue: &mut CachingCons<Arc<SharedRb<Heap<SidWrite>>>>,
+        cmd_receiver: &Receiver<(UsbSidCommand, i32)>,
+        cycles_in_buffer: &Arc<AtomicU32>,
+        aborted: &Arc<AtomicBool>
+    ) -> Result<(), Error> {
+        let mut device_index = 0;
+        Self::config_sids(&handles[device_index], devices[device_index].socket_count)?;
+
+        let mut write_buffer = [SidWrite::default(); MAX_SID_WRITES];
+        let mut byte_buffer = [0u8; MAX_SID_WRITES * 4];
+
+        loop {
+            if Self::is_aborted(aborted) {
+                Self::mute_sids(&handles[device_index], devices[device_index].socket_count)?;
+                break;
+            }
+
+            while let Ok((command, param)) = cmd_receiver.try_recv() {
+                match command {
+                    UsbSidCommand::ClearBuffer => {
+                        cycles_in_buffer.store(0, Ordering::Relaxed);
+                        queue.clear();
+                    }
+                    UsbSidCommand::MuteAll => {
+                        Self::mute_sids(&handles[device_index], devices[device_index].socket_count)?;
+                    }
+                    UsbSidCommand::SetDevice => {
+                        device_index = param as usize;
+                        Self::config_sids(&handles[device_index], devices[device_index].socket_count)?;
+                    }
+                    UsbSidCommand::SetClock => {
+                        let clock_type = if param == 0 { SidClock::Pal } else { SidClock::Ntsc };
+                        Self::set_clock(&handles[device_index], clock_type)?;
+                    }
+                    UsbSidCommand::SetModel => {
+                        let sid_model = if param == 0 { SidModel::Mos6581 } else { SidModel::Mos8580 };
+                        Self::set_sid_model_for_all_sids(&handles[device_index], devices[device_index].socket_count, &sid_model)?;
+                    }
+                    UsbSidCommand::Reset => {
+                        Self::reset_active_sids(&handles[device_index], param as u8)?;
+                    }
+                    UsbSidCommand::ResetAll => {
+                        Self::reset_all_sids(&handles[device_index], devices[device_index].socket_count)?;
+                    }
+                }
+                thread::yield_now();
+            }
+
+            if queue.is_empty() {
+                thread::sleep(Duration::from_millis(BUFFER_EMPTY_DELAY_IN_MILLIS));
+                continue;
+            }
+
+            let count = queue.pop_slice(&mut write_buffer);
+
+            let mut total_cycles: u32 = 0;
+            for (chunk, sid_write) in byte_buffer.chunks_exact_mut(4).zip(&write_buffer[..count]) {
+                let cycles = sid_write.cycles.saturating_sub(1);
+                chunk[0] = sid_write.reg;
+                chunk[1] = sid_write.data;
+                chunk[2] = (cycles >> 8) as u8;
+                chunk[3] = cycles as u8;
+
+                total_cycles += sid_write.cycles as u32;
+            }
+
+            if cycles_in_buffer.load(Ordering::Relaxed) >= total_cycles {
+                cycles_in_buffer.fetch_sub(total_cycles, Ordering::Relaxed);
+            } else {
+                cycles_in_buffer.store(0, Ordering::Relaxed);
+            }
+
+            Self::usbsid_buffer_multi_write(&handles[device_index], &byte_buffer[..(count * 4)])?;
+        }
+        Ok(())
     }
 
     fn is_aborted(aborted: &Arc<AtomicBool>) -> bool {
@@ -258,28 +238,8 @@ impl UsbSidScheduler {
     }
 
     fn configure_device(&mut self, device: &Device<GlobalContext>, index: usize, usbsid_config: &mut UsbSidConfig, device_name: &str) -> Result<(), Error> {
-        let config = device.config_descriptor(0)?;
-
-        let (interface_number, in_endpoint, out_endpoint) = config.interfaces()
-            .flat_map(|i| i.descriptors())
-            .find_map(|d| {
-                let bulk_endpoints: Vec<EndpointDescriptor> = d.endpoint_descriptors()
-                    .filter(|ep| ep.transfer_type() == rusb::TransferType::Bulk)
-                    .collect();
-
-                let in_addr = bulk_endpoints.iter()
-                    .find(|ep| ep.direction() == rusb::Direction::In && ep.address() == EP_IN_ADDR)?
-                    .address();
-
-                let out_addr = bulk_endpoints.iter()
-                    .find(|ep| ep.direction() == rusb::Direction::Out && ep.address() == EP_OUT_ADDR)?
-                    .address();
-
-                Some((d.interface_number(), in_addr, out_addr))
-            })
-            .ok_or(Error::Other)?;
-
-        let mut handle = device.open()?;
+        let interface_number = Self::get_interface_number(device)?;
+        let handle = device.open()?;
 
         if handle.kernel_driver_active(interface_number).unwrap_or(false) {
             handle.detach_kernel_driver(interface_number)?;
@@ -296,10 +256,7 @@ impl UsbSidScheduler {
             return Err(Error::Other);
         }
 
-        self.in_endpoint.push(in_endpoint);
-        self.out_endpoint.push(out_endpoint);
-
-        let socket_count = Self::usb_get_num_sids(&mut handle)?;
+        let socket_count = Self::get_num_sids(&handle)?;
 
         let id = (index + 1).to_string();
         usbsid_config.devices.push(DeviceInfo {
@@ -315,7 +272,39 @@ impl UsbSidScheduler {
         Ok(())
     }
 
-    fn usb_set_clock(handle: &mut rusb::DeviceHandle<GlobalContext>, clock_type: SidClock) -> rusb::Result<usize> {
+    fn get_interface_number(device: &Device<GlobalContext>) -> Result<u8, Error> {
+        let config = device.config_descriptor(0)?;
+        config.interfaces()
+            .flat_map(|i| i.descriptors())
+            .find_map(|d| {
+                d.endpoint_descriptors().find(|ep|
+                    ep.transfer_type() == rusb::TransferType::Bulk &&
+                        ep.direction() == rusb::Direction::In &&
+                        ep.address() == EP_IN_ADDR
+                )?;
+
+                d.endpoint_descriptors().find(|ep|
+                    ep.transfer_type() == rusb::TransferType::Bulk &&
+                        ep.direction() == rusb::Direction::Out &&
+                        ep.address() == EP_OUT_ADDR
+                )?;
+
+                Some(d.interface_number())
+            })
+            .ok_or(Error::Other)
+    }
+
+    fn cleanup_handles(handles: &[rusb::DeviceHandle<GlobalContext>]) {
+        for handle in handles {
+            let device = handle.device();
+            if let Ok(interface_number) = Self::get_interface_number(&device) {
+                let _ = handle.release_interface(interface_number);
+                let _ = handle.attach_kernel_driver(interface_number);
+            }
+        }
+    }
+
+    fn set_clock(handle: &rusb::DeviceHandle<GlobalContext>, clock_type: SidClock) -> rusb::Result<usize> {
         let write_buffer = [
             COMMAND << 6 | CONFIG,
             CMD_SET_CLOCK,
@@ -328,7 +317,7 @@ impl UsbSidScheduler {
         Self::usbsid_buffer_write(handle, &write_buffer)
     }
 
-    fn usb_get_pcb_version(handle: &mut rusb::DeviceHandle<GlobalContext>) -> rusb::Result<u8> {
+    fn get_pcb_version(handle: &rusb::DeviceHandle<GlobalContext>) -> rusb::Result<u8> {
         let write_buffer = [
             COMMAND << 6 | CONFIG,
             CMD_GET_PCB_VERSION,
@@ -351,7 +340,7 @@ impl UsbSidScheduler {
         }
     }
 
-    fn usb_get_num_sids(handle: &mut rusb::DeviceHandle<GlobalContext>) -> rusb::Result<i32> {
+    fn get_num_sids(handle: &rusb::DeviceHandle<GlobalContext>) -> rusb::Result<i32> {
         let write_buffer = [
             COMMAND << 6 | CONFIG,
             CMD_GET_NUM_SIDS,
@@ -374,7 +363,7 @@ impl UsbSidScheduler {
         }
     }
 
-    fn set_stereo_config(handle: &mut rusb::DeviceHandle<GlobalContext>, output_mode: UsbSidOutput) -> rusb::Result<usize> {
+    fn set_stereo_config(handle: &rusb::DeviceHandle<GlobalContext>, output_mode: UsbSidOutput) -> rusb::Result<usize> {
         let write_buffer = [
             COMMAND << 6 | CONFIG,
             CMD_SET_STEREO,
@@ -387,7 +376,7 @@ impl UsbSidScheduler {
         Self::usbsid_buffer_write(handle, &write_buffer)
     }
 
-    fn usbsid_buffer_multi_write(handle: &mut rusb::DeviceHandle<GlobalContext>, buff: &[u8]) -> rusb::Result<usize> {
+    fn usbsid_buffer_multi_write(handle: &rusb::DeviceHandle<GlobalContext>, buff: &[u8]) -> rusb::Result<usize> {
         let timeout = Duration::from_millis(0);
         let mut buffer = [0u8; MAX_BULK_WRITE_SIZE];
         let mut total_written = 0;
@@ -402,18 +391,18 @@ impl UsbSidScheduler {
         Ok(total_written)
     }
 
-    fn usbsid_buffer_write(handle: &mut rusb::DeviceHandle<GlobalContext>, buff: &[u8]) -> rusb::Result<usize> {
+    fn usbsid_buffer_write(handle: &rusb::DeviceHandle<GlobalContext>, buff: &[u8]) -> rusb::Result<usize> {
         let timeout = Duration::from_millis(0);
         handle.write_bulk(EP_OUT_ADDR, &buff[0..cmp::min(MAX_BULK_WRITE_SIZE, buff.len())], timeout)
     }
 
-    fn config_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
-        let pcb_version = Self::usb_get_pcb_version(handle)?;
+    fn config_sids(handle: &rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
+        let pcb_version = Self::get_pcb_version(handle)?;
         if (pcb_version) >= 13 {
             Self::set_stereo_config(handle, UsbSidOutput::Mono)?;
         }
 
-        Self::usb_set_clock(handle, SidClock::Pal)?;
+        Self::set_clock(handle, SidClock::Pal)?;
         Self::mute_sids(handle, socket_count)
     }
 
@@ -430,7 +419,7 @@ impl UsbSidScheduler {
         buffer.push(sid_write.cycles as u8);
     }
 
-    fn mute_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
+    fn mute_sids(handle: &rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
         let mut buffer = vec![];
 
         for sid_index in 0..socket_count {
@@ -441,7 +430,7 @@ impl UsbSidScheduler {
         Self::usbsid_buffer_multi_write(handle, &buffer)
     }
 
-    fn set_sid_model_for_all_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, socket_count: i32, sid_model: &SidModel) -> rusb::Result<usize> {
+    fn set_sid_model_for_all_sids(handle: &rusb::DeviceHandle<GlobalContext>, socket_count: i32, sid_model: &SidModel) -> rusb::Result<usize> {
         let mut buffer = vec![];
         for sid_index in 0..socket_count {
             Self::configure_sid_replacement((sid_index * 0x20) as u8, &mut buffer, sid_model);
@@ -468,7 +457,7 @@ impl UsbSidScheduler {
         }
     }
 
-    fn reset_all_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
+    fn reset_all_sids(handle: &rusb::DeviceHandle<GlobalContext>, socket_count: i32) -> rusb::Result<usize> {
         let mut buffer = vec![];
 
         let sid_writes = mossid::reset_all_sids_sequence(socket_count, true);
@@ -477,7 +466,7 @@ impl UsbSidScheduler {
         Self::usbsid_buffer_multi_write(handle, &buffer)
     }
 
-    fn reset_active_sids(handle: &mut rusb::DeviceHandle<GlobalContext>, base_reg: u8) -> rusb::Result<usize> {
+    fn reset_active_sids(handle: &rusb::DeviceHandle<GlobalContext>, base_reg: u8) -> rusb::Result<usize> {
         let mut buffer = vec![];
 
         let sid_writes = mossid::reset_sid_sequence(base_reg, true);

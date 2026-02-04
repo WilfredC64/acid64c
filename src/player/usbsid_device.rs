@@ -184,13 +184,13 @@ pub struct UsbsidDevice {
     in_cmd_sender: Sender<(UsbSidCommand, i32)>,
     in_cmd_receiver: Receiver<(UsbSidCommand, i32)>,
     active_device_index: i32,
-    aborted: Arc<AtomicBool>,
+    usbsid_aborted: Arc<AtomicBool>,
     cycles_in_buffer: Arc<AtomicU32>,
 }
 
 impl UsbsidDevice {
     pub fn new(abort_type: Arc<AtomicI32>) -> UsbsidDevice {
-        let aborted = Arc::new(AtomicBool::new(false));
+        let usbsid_aborted = Arc::new(AtomicBool::new(false));
 
         let cycles_in_buffer = Arc::new(AtomicU32::new(0));
         let rb = HeapRb::<SidWrite>::new(SID_WRITES_BUFFER_SIZE);
@@ -198,7 +198,7 @@ impl UsbsidDevice {
 
         let usbsid_scheduler = UsbSidScheduler::new(
             Some(cons),
-            aborted.clone(),
+            usbsid_aborted.clone(),
             cycles_in_buffer.clone()
         );
 
@@ -224,7 +224,7 @@ impl UsbsidDevice {
             in_cmd_sender,
             in_cmd_receiver,
             active_device_index: 0,
-            aborted,
+            usbsid_aborted,
             cycles_in_buffer,
         }
     }
@@ -298,7 +298,7 @@ impl UsbsidDevice {
     }
 
     pub fn test_connection(&mut self, _dev_nr: i32) {
-        if self.is_connected() && self.has_error() {
+        if self.is_connected() && self.is_usbsid_aborted() {
             self.disconnect_with_error(ERROR_MSG_DEVICE_COUNT_CHANGED.to_string());
         }
     }
@@ -402,13 +402,13 @@ impl UsbsidDevice {
     }
 
     pub fn try_write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
-        if self.is_aborted() {
-            let _ = self.in_cmd_sender.send((UsbSidCommand::Abort, dev_nr));
+        if self.is_player_aborted() {
+            self.usbsid_aborted.store(true, Ordering::SeqCst);
             self.disconnect();
             return DeviceResponse::Ok
         }
 
-        if self.has_error() {
+        if self.is_usbsid_aborted() {
             self.disconnect_with_error(ERROR_MSG_DEVICE_FAILURE.to_string());
             return DeviceResponse::Error
         }
@@ -474,12 +474,12 @@ impl UsbsidDevice {
         }
     }
 
-    fn is_aborted(&self) -> bool {
+    fn is_player_aborted(&self) -> bool {
         let abort_type = self.abort_type.load(Ordering::SeqCst);
         abort_type == ABORTED || abort_type == ABORTING
     }
 
-    fn has_error(&self) -> bool {
-        self.aborted.load(Ordering::SeqCst)
+    fn is_usbsid_aborted(&self) -> bool {
+        self.usbsid_aborted.load(Ordering::SeqCst)
     }
 }
