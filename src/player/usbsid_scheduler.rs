@@ -156,12 +156,7 @@ impl UsbSidScheduler {
         let mut write_buffer = [SidWrite::default(); MAX_SID_WRITES];
         let mut byte_buffer = [0u8; MAX_SID_WRITES * 4];
 
-        loop {
-            if Self::is_aborted(aborted) {
-                Self::mute_sids(&handles[device_index], devices[device_index].socket_count)?;
-                break;
-            }
-
+        while !Self::is_aborted(aborted) {
             while let Ok((command, param)) = cmd_receiver.try_recv() {
                 match command {
                     UsbSidCommand::ClearBuffer => {
@@ -219,6 +214,8 @@ impl UsbSidScheduler {
 
             Self::usbsid_buffer_multi_write(&handles[device_index], &byte_buffer[..(count * 4)])?;
         }
+
+        Self::mute_sids(&handles[device_index], devices[device_index].socket_count)?;
         Ok(())
     }
 
