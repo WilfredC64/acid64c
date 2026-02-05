@@ -5,7 +5,7 @@ ACID64 Console Player is a console application for playing C64 music files on Wi
 The player requires a network SID device to be installed (such as
 [SID-Device](https://github.com/WilfredC64/sid-device/) or
 [JSIDDevice](https://sourceforge.net/projects/jsidplay2/files/jsiddevice/)) or
-a hardware device such as a HardSID USB, SIDBlaster USB or an Ultimate 64/1541.
+a hardware device such as a USBSID-Pico, HardSID USB, SIDBlaster USB, Commodore 64 Ultimate or an Ultimate 64/1541.
 
 The player makes use of the acid64pro.dll win32 library. Since this dll is a 32-bit
 library, the code of the player can only run successfully when compiled for Windows 32-bit.
@@ -77,6 +77,40 @@ For documentation about the network SID device, see the
 [Network SID Device V4](https://htmlpreview.github.io/?https://github.com/WilfredC64/acid64c/blob/master/docs/network_sid_device_v4.html) specification,
 converted from the
 [JSidplay2](https://sourceforge.net/p/jsidplay2/code/HEAD/tree/trunk/jsidplay2/src/main/asciidoc/netsiddev.adoc) project.
+
+## USBSID-Pico support
+
+ACID64 supports the USBSID-Pico device. For Windows, you need to have a driver installed.
+
+### Driver installation
+
+You need to install the WinUSB driver which is available via the Zadig tool:
+
+[https://zadig.akeo.ie/](https://zadig.akeo.ie/)
+
+
+This is an open-source tool which will install a generic signed driver that can control any USB device.
+
+When you run the Zadig tool, turn on your device and see if one of the following devices are in the
+list:
+
+- USBSID-Pico Data (Interface 0)
+
+If your device is not in the dropdown list, check if it is connected and turned
+it on. You can also go to the "Options" menu and select "List All Devices" and
+see if the device is in the list.
+
+Now find and select the USBSID-Pico device from the dropdown. Notice the USB ID is:
+
+- **CAFE 4011 00** for USBSID-Pico Data (Interface 0)
+
+Don't select the USBSID-Pico with "WebUSB" or "Midi" in the name. You need to
+select the one with "Data" in the name.
+
+Make sure the WinUSB driver is selected and press the "Install Driver" button.
+It will take a while before the installation completes.
+
+You have to install the driver for each USBSID-Pico Device that you plug in.
 
 ## HardSID USB support
 
