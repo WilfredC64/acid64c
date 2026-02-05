@@ -16,7 +16,7 @@ use crate::utils::{armsid, armsid::SidFilter, fpgasid, mossid};
 
 pub const USBSID_DEVICE_NAME: &str = "USBSID-Pico";
 pub const ERROR_NO_USBSID_FOUND: &str = "No USBSID device found.";
-const ERROR_CONNECTING_DEVICE: &str = "Error connecting to USBSID Device";
+const ERROR_CONNECTING_DEVICE: &str = "Error connecting to USBSID Device.";
 const ERROR_STARTING_SCHEDULER: &str = "Error starting USBSID Scheduler.";
 
 const USBSID_VENDOR: u16 = 0xCAFE;
@@ -197,6 +197,7 @@ impl UsbSidScheduler {
 
             let mut total_cycles: u32 = 0;
             for (chunk, sid_write) in byte_buffer.chunks_exact_mut(4).zip(&write_buffer[..count]) {
+                // subtract 1 from cycles since the hardware adds 1 extra cycle to sync with the internal clock
                 let cycles = sid_write.cycles.saturating_sub(1);
                 chunk[0] = sid_write.reg;
                 chunk[1] = sid_write.data;
