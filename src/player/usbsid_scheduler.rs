@@ -15,7 +15,6 @@ use crate::player::sid_device::{DeviceInfo, SidModel, SidWrite};
 use crate::utils::{armsid, armsid::SidFilter, fpgasid, mossid};
 
 pub const USBSID_DEVICE_NAME: &str = "USBSID-Pico";
-pub const ERROR_NO_USBSID_FOUND: &str = "No USBSID device found.";
 const ERROR_CONNECTING_DEVICE: &str = "Error connecting to USBSID Device.";
 const ERROR_STARTING_SCHEDULER: &str = "Error starting USBSID Scheduler.";
 
@@ -117,7 +116,7 @@ impl UsbSidScheduler {
 
         let usbsid_config = self.detect_devices().map_err(|error| format!("{}: {error}", ERROR_CONNECTING_DEVICE))?;
         if usbsid_config.devices.is_empty() {
-            return Err(ERROR_NO_USBSID_FOUND.to_string());
+            return Ok(usbsid_config);
         }
 
         let mut queue = self.queue.take().ok_or(ERROR_STARTING_SCHEDULER.to_string())?;

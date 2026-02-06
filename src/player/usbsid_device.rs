@@ -11,11 +11,12 @@ use ringbuf::{CachingProd, HeapRb, SharedRb};
 use ringbuf::producer::Producer;
 use ringbuf::storage::Heap;
 use ringbuf::traits::Split;
-use crate::player::usbsid_scheduler::{UsbSidCommand, UsbSidScheduler, ERROR_NO_USBSID_FOUND, USBSID_DEVICE_NAME};
+use crate::player::usbsid_scheduler::{UsbSidCommand, UsbSidConfig, UsbSidScheduler, USBSID_DEVICE_NAME};
 use crossbeam_channel::{Sender, Receiver, bounded};
 
 const ERROR_MSG_DEVICE_COUNT_CHANGED: &str = "Number of devices is changed.";
 const ERROR_MSG_DEVICE_FAILURE: &str = "Failure occurred during interaction with device.";
+const ERROR_MSG_NO_USBSID_FOUND: &str = "No USBSID device found.";
 
 pub const MAX_CYCLES_IN_BUFFER: u32 = 63*312*5; // ~100ms of PAL C64 time
 pub const SID_WRITES_BUFFER_SIZE: usize = 2*1024;
@@ -233,7 +234,7 @@ impl UsbsidDevice {
         self.disconnect();
         self.last_error = None;
 
-        let usbsid_config = self.usbsid_scheduler.start(Receiver::clone(&self.in_cmd_receiver))?;
+        let usbsid_config = self.usbsid_scheduler.start(Receiver::clone(&self.in_cmd_receiver)).unwrap_or(UsbSidConfig::default());
 
         let device_names = usbsid_config.devices.clone();
         self.device_count = device_names.len() as i32;
@@ -259,7 +260,7 @@ impl UsbsidDevice {
             }
             self.sid_count = self.device_index.len() as i32;
         } else {
-            return Err(ERROR_NO_USBSID_FOUND.to_string())
+            return Err(ERROR_MSG_NO_USBSID_FOUND.to_string())
         }
 
         Ok(())
