@@ -11,7 +11,7 @@ use ringbuf::{CachingProd, HeapRb, SharedRb};
 use ringbuf::producer::Producer;
 use ringbuf::storage::Heap;
 use ringbuf::traits::Split;
-use crate::player::usbsid_scheduler::{UsbSidCommand, UsbSidConfig, UsbSidScheduler, USBSID_DEVICE_NAME};
+use crate::player::usbsid_scheduler::{UsbSidCommand, UsbSidScheduler, USBSID_DEVICE_NAME};
 use crossbeam_channel::{Sender, Receiver, bounded};
 
 const ERROR_MSG_DEVICE_COUNT_CHANGED: &str = "Number of devices is changed.";
@@ -234,7 +234,7 @@ impl UsbsidDevice {
         self.disconnect();
         self.last_error = None;
 
-        let usbsid_config = self.usbsid_scheduler.start(Receiver::clone(&self.in_cmd_receiver)).unwrap_or(UsbSidConfig::default());
+        let usbsid_config = self.usbsid_scheduler.start(Receiver::clone(&self.in_cmd_receiver)).unwrap_or_default();
 
         let device_names = usbsid_config.devices.clone();
         self.device_count = device_names.len() as i32;
