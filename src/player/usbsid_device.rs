@@ -337,10 +337,11 @@ impl UsbsidDevice {
         }
     }
 
-    pub fn reset_active_sids(&mut self, _dev_nr: i32) {
+    pub fn reset_active_sids(&mut self, dev_nr: i32) {
         if self.is_connected() {
             for sid_nr in 0..self.number_of_sids as u8 {
-                self.send_command(UsbSidCommand::Reset, (sid_nr * 0x20) as i32);
+                let base_reg = self.map_device_to_reg(dev_nr, sid_nr * 0x20);
+                self.send_command(UsbSidCommand::Reset, base_reg as i32);
             }
         }
     }
