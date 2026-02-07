@@ -295,11 +295,13 @@ impl UsbsidDevice {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.device_count > 0
+        self.device_count > 0 && !self.is_usbsid_aborted()
     }
 
-    pub fn test_connection(&mut self, _dev_nr: i32) {
-        if self.is_connected() && self.is_usbsid_aborted() {
+    pub fn test_connection(&mut self, dev_nr: i32) {
+        if self.is_connected() {
+            self.write(dev_nr, MIN_CYCLE_SID_WRITE, DUMMY_REG, 0);
+        } else {
             self.disconnect_with_error(ERROR_MSG_DEVICE_COUNT_CHANGED.to_string());
         }
     }
