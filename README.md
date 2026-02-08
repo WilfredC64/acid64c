@@ -112,6 +112,10 @@ It will take a while before the installation completes.
 
 You have to install the driver for each USBSID-Pico Device that you plug in.
 
+More information about the USBSID-Pico device installation can be found here:
+
+[USBSID-Pico software manual](https://github.com/LouDnl/USBSID-Pico/blob/master/doc/USBSID-Pico-software-manual.adoc)
+
 ## HardSID USB support
 
 ACID64 supports HardSID USB devices like the **HardSID 4U**, **HardSID UPlay** and **HardSID Uno**.
