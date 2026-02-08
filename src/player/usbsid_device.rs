@@ -294,8 +294,7 @@ impl UsbsidDevice {
     }
 
     pub fn can_pair_devices(&mut self, dev1: i32, dev2: i32) -> bool {
-        dev1 != dev2 &&
-        self.device_mappings[dev1 as usize] == self.device_mappings[dev2 as usize]
+        dev1 != dev2 && self.device_mappings[dev1 as usize] == self.device_mappings[dev2 as usize]
     }
 
     pub fn get_device_count(&self) -> i32 {
@@ -320,21 +319,15 @@ impl UsbsidDevice {
     }
 
     pub fn silent_all_sids(&mut self, dev_nr: i32, _write_volume: bool) {
-        if self.is_connected() {
-            self.send_command(UsbSidCommand::MuteAll, dev_nr);
-        }
+        self.send_command(UsbSidCommand::MuteAll, dev_nr);
     }
 
     pub fn silent_active_sids(&mut self, dev_nr: i32, _write_volume: bool) {
-        if self.is_connected() {
-            self.send_command(UsbSidCommand::MuteAll, dev_nr);
-        }
+        self.send_command(UsbSidCommand::MuteAll, dev_nr);
     }
 
     pub fn reset_all_sids(&mut self, dev_nr: i32) {
-        if self.is_connected() {
-            self.send_command(UsbSidCommand::ResetAll, dev_nr);
-        }
+        self.send_command(UsbSidCommand::ResetAll, dev_nr);
     }
 
     pub fn reset_active_sids(&mut self, dev_nr: i32) {
@@ -347,10 +340,8 @@ impl UsbsidDevice {
     }
 
     pub fn reset_all_buffers(&mut self, dev_nr: i32) {
-        if self.is_connected() {
-            self.send_command(UsbSidCommand::ClearBuffer, dev_nr);
-            self.temp_queue.clear();
-        }
+        self.send_command(UsbSidCommand::ClearBuffer, dev_nr);
+        self.temp_queue.clear();
     }
 
     pub fn dummy_write(&mut self, dev_nr: i32, cycles: u32) {
@@ -365,10 +356,7 @@ impl UsbsidDevice {
     }
 
     pub fn write(&mut self, dev_nr: i32, cycles: u32, reg: u8, data: u8) -> DeviceResponse {
-        if self.is_connected() {
-            return self.try_write(dev_nr, cycles, reg, data);
-        }
-        DeviceResponse::Ok
+        self.try_write(dev_nr, cycles, reg, data)
     }
 
     pub fn retry_write(&mut self, _dev_nr: i32) -> DeviceResponse {
@@ -382,7 +370,7 @@ impl UsbsidDevice {
             return DeviceResponse::Ok
         }
 
-        if self.is_usbsid_aborted() {
+        if !self.is_connected() {
             self.disconnect_with_error(ERROR_MSG_DEVICE_FAILURE.to_string());
             return DeviceResponse::Error
         }
@@ -397,24 +385,15 @@ impl UsbsidDevice {
         while cycles > MAX_CYCLES_PER_WRITE {
             cycles -= MAX_CYCLES_PER_WRITE - MIN_CYCLE_SID_WRITE;
 
-            self.temp_queue.push_back(
-                SidWrite {
-                    reg: DUMMY_REG,
-                    data: 0x00,
-                    cycles: (MAX_CYCLES_PER_WRITE - MIN_CYCLE_SID_WRITE) as u16
-                }
-            );
+            self.temp_queue.push_back(SidWrite {
+                reg: DUMMY_REG,
+                data: 0x00,
+                cycles: (MAX_CYCLES_PER_WRITE - MIN_CYCLE_SID_WRITE) as u16
+            });
         }
 
         let reg = self.map_device_to_reg(dev_nr, reg);
-
-        self.temp_queue.push_back(
-            SidWrite {
-                reg,
-                data,
-                cycles: cycles as u16
-            }
-        );
+        self.temp_queue.push_back(SidWrite { reg, data, cycles: cycles as u16 } );
 
         if self.cycles_in_buffer.load(Ordering::Relaxed) >= MAX_CYCLES_IN_BUFFER {
             return DeviceResponse::Busy
@@ -453,6 +432,7 @@ impl UsbsidDevice {
         self.sid_count = 0;
         self.number_of_sids = 0;
         self.sid_clock = SidClock::Pal;
+        self.temp_queue.clear();
 
         self.device_id = vec![];
         self.device_base_reg = vec![];
@@ -463,7 +443,7 @@ impl UsbsidDevice {
         self.cycles_in_buffer.store(0, Ordering::Relaxed);
     }
 
-    fn map_device_to_reg(&mut self, dev_nr: i32, reg: u8) -> u8 {
+    fn map_device_to_reg(&self, dev_nr: i32, reg: u8) -> u8 {
         let reg = self.filter_reg_for_unsupported_writes(dev_nr, reg);
         let base_reg = self.device_base_reg[dev_nr as usize];
         let socket_count = self.device_socket_count[dev_nr as usize];
@@ -471,7 +451,7 @@ impl UsbsidDevice {
         (reg + base_reg) & socket_wrap
     }
 
-    fn filter_reg_for_unsupported_writes(&mut self, dev_nr: i32, reg: u8) -> u8 {
+    fn filter_reg_for_unsupported_writes(&self, dev_nr: i32, reg: u8) -> u8 {
         let socket_count = self.device_socket_count[dev_nr as usize];
         if (reg as i32) >= socket_count * 0x20 {
             DUMMY_REG
@@ -481,9 +461,9 @@ impl UsbsidDevice {
     }
 
     fn send_command(&mut self, command: UsbSidCommand, dev_nr: i32) {
-        if self.in_cmd_sender.send_timeout((command, dev_nr), Duration::from_millis(CMD_TIMEOUT_IN_MILLIS)).is_err() {
+        if self.is_connected() && self.in_cmd_sender.send_timeout((command, dev_nr), Duration::from_millis(CMD_TIMEOUT_IN_MILLIS)).is_err() {
             self.disconnect_with_error(ERROR_MSG_DEVICE_FAILURE.to_string());
-        };
+        }
     }
 
     fn is_player_aborted(&self) -> bool {
