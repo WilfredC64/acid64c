@@ -20,6 +20,7 @@ const ERROR_STARTING_SCHEDULER: &str = "Error starting USBSID Scheduler.";
 
 const USBSID_VENDOR: u16 = 0xCAFE;
 const USBSID_PRODUCT_ID: u16 = 0x4011;
+const TIMEOUT_IN_MILLIS: u64 = 500;
 const BUFFER_EMPTY_DELAY_IN_MILLIS: u64 = 5;
 
 const EP_OUT_ADDR: u8 = 0x02;
@@ -36,23 +37,23 @@ const USB_BUFFER_SIZE: usize = 64;
 const MAX_SID_WRITES: usize = (USB_BUFFER_SIZE - 1) / 4;
 const MAX_BULK_WRITE_SIZE: usize = MAX_SID_WRITES * 4 + 1;
 
-const CYCLED_WRITE: u8 = 0x02;
 const COMMAND: u8 = 0x03;
-
 const CONFIG: u8 = 0x12;
+const CYCLED_WRITE: u8 = 0x02;
+
 const CMD_GET_NUM_SIDS: u8 = 0x39;
 const CMD_GET_PCB_VERSION: u8 = 0x81;
-const CMD_SET_STEREO: u8 = 0x89;
 const CMD_SET_CLOCK: u8 = 0x50;
+const CMD_SET_STEREO: u8 = 0x89;
 
 pub enum UsbSidCommand {
     ClearBuffer,
-    SetDevice,
-    SetClock,
-    SetModel,
     MuteAll,
     Reset,
     ResetAll,
+    SetClock,
+    SetDevice,
+    SetModel,
 }
 
 #[allow(dead_code)]
@@ -132,6 +133,8 @@ impl UsbSidScheduler {
             if Self::run_usbsid_writer_loop(&handles, &devices, &mut queue, &cmd_receiver, &cycles_in_buffer, &aborted).is_err() {
                 aborted.store(true, Ordering::SeqCst);
             }
+
+            for _ in cmd_receiver.try_iter() {}; // drain all pending requests
 
             cycles_in_buffer.store(0, Ordering::Relaxed);
             queue.clear();
@@ -268,7 +271,7 @@ impl UsbSidScheduler {
     }
 
     fn setup_usb_serial(handle: &DeviceHandle<GlobalContext>) -> Result<(), Error> {
-        let timeout = Duration::from_millis(0);
+        let timeout = Duration::from_millis(TIMEOUT_IN_MILLIS);
         let req_type = request_type(Direction::Out, RequestType::Class, Recipient::Interface);
 
         handle.write_control(req_type, ACM_SET_CONTROL_LINE_STATE, ACM_CTRL_DTR | ACM_CTRL_RTS, 0, &[], timeout)?;
@@ -312,29 +315,14 @@ impl UsbSidScheduler {
     }
 
     fn set_clock(handle: &DeviceHandle<GlobalContext>, clock_type: SidClock) -> rusb::Result<usize> {
-        let write_buffer = [
-            COMMAND << 6 | CONFIG,
-            CMD_SET_CLOCK,
-            clock_type as u8,
-            0,
-            0,
-            0,
-        ];
-
+        let write_buffer = [COMMAND << 6 | CONFIG, CMD_SET_CLOCK, clock_type as u8, 0, 0, 0];
         Self::usbsid_buffer_write(handle, &write_buffer)
     }
 
     fn get_pcb_version(handle: &DeviceHandle<GlobalContext>) -> rusb::Result<u8> {
-        let write_buffer = [
-            COMMAND << 6 | CONFIG,
-            CMD_GET_PCB_VERSION,
-            0x01,
-            0,
-            0,
-            0,
-        ];
+        let write_buffer = [COMMAND << 6 | CONFIG, CMD_GET_PCB_VERSION, 0x01, 0, 0, 0];
 
-        let timeout = Duration::from_millis(0);
+        let timeout = Duration::from_millis(TIMEOUT_IN_MILLIS);
         handle.write_bulk(EP_OUT_ADDR, &write_buffer, timeout)?;
 
         let mut read_buffer = [0u8; 1];
@@ -348,16 +336,9 @@ impl UsbSidScheduler {
     }
 
     fn get_num_sids(handle: &DeviceHandle<GlobalContext>) -> rusb::Result<i32> {
-        let write_buffer = [
-            COMMAND << 6 | CONFIG,
-            CMD_GET_NUM_SIDS,
-            0,
-            0,
-            0,
-            0,
-        ];
+        let write_buffer = [COMMAND << 6 | CONFIG, CMD_GET_NUM_SIDS, 0, 0, 0, 0];
 
-        let timeout = Duration::from_millis(0);
+        let timeout = Duration::from_millis(TIMEOUT_IN_MILLIS);
         handle.write_bulk(EP_OUT_ADDR, &write_buffer, timeout)?;
 
         let mut read_buffer = [0u8; 1];
@@ -371,20 +352,12 @@ impl UsbSidScheduler {
     }
 
     fn set_stereo_config(handle: &DeviceHandle<GlobalContext>, output_mode: UsbSidOutput) -> rusb::Result<usize> {
-        let write_buffer = [
-            COMMAND << 6 | CONFIG,
-            CMD_SET_STEREO,
-            output_mode as u8,
-            0,
-            0,
-            0,
-        ];
-
+        let write_buffer = [COMMAND << 6 | CONFIG, CMD_SET_STEREO, output_mode as u8, 0, 0, 0];
         Self::usbsid_buffer_write(handle, &write_buffer)
     }
 
     fn usbsid_buffer_multi_write(handle: &DeviceHandle<GlobalContext>, buff: &[u8]) -> rusb::Result<usize> {
-        let timeout = Duration::from_millis(0);
+        let timeout = Duration::from_millis(TIMEOUT_IN_MILLIS);
         let mut buffer = [0u8; MAX_BULK_WRITE_SIZE];
         let mut total_written = 0;
 
@@ -399,7 +372,7 @@ impl UsbSidScheduler {
     }
 
     fn usbsid_buffer_write(handle: &DeviceHandle<GlobalContext>, buff: &[u8]) -> rusb::Result<usize> {
-        let timeout = Duration::from_millis(0);
+        let timeout = Duration::from_millis(TIMEOUT_IN_MILLIS);
         handle.write_bulk(EP_OUT_ADDR, &buff[0..cmp::min(MAX_BULK_WRITE_SIZE, buff.len())], timeout)
     }
 
