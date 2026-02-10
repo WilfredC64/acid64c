@@ -19,7 +19,7 @@ crossterm = "0.29"
 encoding = "0.2"
 encoding_rs = "0.8"
 encoding_rs_io = "0.1"
-if-addrs = "0.14"
+if-addrs = "0.15"
 libloading = "0.9"
 parking_lot = "0.12"
 timer = "0.2"
@@ -41,7 +41,7 @@ winres = "0.1"
 
 [package.metadata.winres]
 ProductName = "ACID64 Console Player"
-LegalCopyright = "Copyright © 2003 - 2025 Wilfred Bos"
+LegalCopyright = "Copyright © 2003 - 2026 Wilfred Bos"
 
 [profile.release]
 codegen-units = 1
