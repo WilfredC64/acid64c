@@ -1,10 +1,19 @@
-// Copyright (C) 2019 - 2025 Wilfred Bos
+// Copyright (C) 2019 - 2026 Wilfred Bos
 // Licensed under the GNU GPL v3 license. See the LICENSE file for the terms and conditions.
 
 use encoding::{Encoding, DecoderTrap, EncoderTrap};
 use encoding::all::WINDOWS_1252;
 use libloading::{Library, Symbol};
 use std::ffi::{CString, CStr};
+
+#[cfg(target_os = "windows")]
+const FILENAME: &str = "acid64pro.dll";
+
+#[cfg(target_os = "linux")]
+const FILENAME: &str = "libacid64pro.so";
+
+#[cfg(target_os = "macos")]
+const FILENAME: &str = "libacid64pro.dylib";
 
 pub struct Acid64Library {
     a64lib: Library
@@ -19,20 +28,11 @@ impl Acid64Library {
     }
 
     pub fn load() -> Result<Acid64Library, String> {
-        #[cfg(target_os = "windows")]
-        let filename = "acid64pro.dll";
-
-        #[cfg(target_os = "linux")]
-        let filename = "libacid64pro.so";
-
-        #[cfg(target_os = "macos")]
-        let filename = "libacid64pro.dylib";
-
-        let a64lib = unsafe { Library::new(filename) };
-        if a64lib.is_err() {
-            return Err("acid64pro library could not be loaded.".to_string());
+        unsafe {
+            Library::new(FILENAME)
+                .map(Acid64Library::new)
+                .map_err(|e| format!("acid64pro library could not be loaded: {}", e))
         }
-        Ok(Acid64Library::new(a64lib.unwrap()))
     }
 
     pub fn get_version(&self) -> i32 {

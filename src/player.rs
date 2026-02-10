@@ -167,7 +167,7 @@ impl Player {
         let (cmd_sender, cmd_receiver) = sync_channel(0);
 
         Player {
-            acid64_lib: Acid64Library::load().expect("acid64pro library could not be loaded"),
+            acid64_lib: Acid64Library::load().expect("acid64pro library failure"),
             c64_instance: 0,
             sid_device: None,
             sid_data_processor: SidDataProcessor::new(),
