@@ -165,11 +165,10 @@ impl SidBlasterScheduler {
                     next_write = queue.try_pop();
 
                     let mut should_flush = device_change || sid_write.stop_draining;
-                    if let Some(next) = &next_write {
-                        if next.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES || next.reg >> 5 != dev_nr || (sid_write_usage[next.reg as usize] && next.cycles > ALLOW_DOUBLE_REG_WRITES_WITHIN_CYCLES) {
+                    if let Some(next) = &next_write
+                        && (next.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES || next.reg >> 5 != dev_nr || (sid_write_usage[next.reg as usize] && next.cycles > ALLOW_DOUBLE_REG_WRITES_WITHIN_CYCLES)) {
                             should_flush |= true;
                         }
-                    }
 
                     if !buffer.is_empty() && (should_flush || buffer.len() > MAX_DEVICE_BUFFER_SIZE || cycles_in_temp_buffer > MAX_DEVICE_BUFFER_CYCLES || sid_write.cycles > THRESHOLD_TO_FLUSH_BUFFER_IN_CYCLES) {
                         if last_write.is_none() {

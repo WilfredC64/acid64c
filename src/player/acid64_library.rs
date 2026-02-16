@@ -421,11 +421,11 @@ impl Acid64Library {
     }
 
     #[inline]
-    unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
+    fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
         if text.is_null() {
             None
         } else {
-            Some(WINDOWS_1252.decode(CStr::from_ptr(text).to_bytes(), DecoderTrap::Ignore).unwrap())
+            Some(WINDOWS_1252.decode(unsafe { CStr::from_ptr(text) }.to_bytes(), DecoderTrap::Ignore).unwrap())
         }
     }
 }

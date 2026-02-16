@@ -289,11 +289,10 @@ impl Player {
 
         self.redo_buffer.clear();
 
-        if self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
-            if let Some(filename) = self.filename.clone() {
+        if self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number)
+            && let Some(filename) = self.filename.clone() {
                 self.send_sid(&filename, self.song_number);
             }
-        }
 
         self.sid_data_processor.init(0);
         self.sid_device.as_mut().unwrap().set_cycles_in_fifo(self.device_number, 0);
@@ -382,15 +381,14 @@ impl Player {
     }
 
     pub fn stop_player(&mut self) {
-        if let Some(ref mut sid_device) = self.sid_device {
-            if self.device_number != -1 && !self.paused && sid_device.has_remote_sidplayer(self.device_number) {
+        if let Some(ref mut sid_device) = self.sid_device
+            && self.device_number != -1 && !self.paused && sid_device.has_remote_sidplayer(self.device_number) {
                 if sid_device.is_connected(self.device_number) {
                     sid_device.stop_sid(self.device_number);
                 } else {
                     self.abort_type.store(ABORT_TO_QUIT, Ordering::SeqCst);
                 }
             }
-        }
     }
 
     pub fn get_device_names(&self) -> Arc<Mutex<Vec<String>>> {
@@ -426,10 +424,8 @@ impl Player {
     pub fn setup_sldb_and_stil(&mut self, hvsc_location: Option<String>, load_stil: bool) -> Result<(), String> {
         let mut hvsc_root = self.get_hvsc_root_location(hvsc_location)?;
 
-        if hvsc_root.is_none() {
-            if let Some(filename) = &self.filename {
-                hvsc_root = hvsc::get_hvsc_root(filename);
-            }
+        if hvsc_root.is_none() && let Some(filename) = &self.filename {
+            hvsc_root = hvsc::get_hvsc_root(filename);
         }
 
         if let Some(hvsc_root) = hvsc_root {
@@ -538,12 +534,11 @@ impl Player {
 
                         self.rewrite_buffer();
 
-                        if self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number) {
-                            if let Some(filename) = self.filename.clone() {
+                        if self.sid_device.as_mut().unwrap().has_remote_sidplayer(self.device_number)
+                            && let Some(filename) = self.filename.clone() {
                                 let _ = self.restart_song();
                                 self.send_sid(&filename, self.song_number);
                             }
-                        }
                     }
                     self.paused = false;
                 },
@@ -762,7 +757,13 @@ impl Player {
         sid_info.basic_sid = self.acid64_lib.is_basic_sid(self.c64_instance);
         sid_info.md5_hash = self.md5_hash.clone();
 
-        let song_length = self.get_song_length(self.song_number);
+        let song_number = if self.song_number == -1 {
+            sid_info.default_song
+        } else {
+            self.song_number
+        };
+
+        let song_length = self.get_song_length(song_number);
         sid_info.song_length = song_length;
 
         sid_info.stil_entry = self.get_stil_entry();

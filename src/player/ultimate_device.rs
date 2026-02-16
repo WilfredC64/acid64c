@@ -294,11 +294,10 @@ impl UltimateDevice {
                 self.disconnect();
             } else {
                 let mut recv_buff = [0; MAX_DATA_SIZE];
-                if let Ok((size, _)) = socket.recv_from(&mut recv_buff) {
-                    if size >= MAGIC_ID.len() && recv_buff[0..MAGIC_ID.len()].eq(MAGIC_ID) {
+                if let Ok((size, _)) = socket.recv_from(&mut recv_buff)
+                    && size >= MAGIC_ID.len() && recv_buff[0..MAGIC_ID.len()].eq(MAGIC_ID) {
                         self.retry_count = 0;
                     }
-                }
             }
         }
     }

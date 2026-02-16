@@ -644,13 +644,11 @@ impl NetworkSidDevice {
                     idle_time = 1;
                     continue;
                 } else {
-                    if !self.turbo_mode {
-                        if let Command::TryWrite = command {
-                            if cycles_sent_to_server > CLIENT_WAIT_CYCLES_THRESHOLD {
-                                thread::sleep(time::Duration::from_millis(1));
-                            }
+                    if !self.turbo_mode
+                        && let Command::TryWrite = command
+                        && cycles_sent_to_server > CLIENT_WAIT_CYCLES_THRESHOLD {
+                            thread::sleep(time::Duration::from_millis(1));
                         }
-                    }
 
                     return (device_state, result);
                 }

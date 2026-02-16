@@ -63,7 +63,7 @@ impl Sldb {
         Self::validate_file_format(&mut lines)
     }
 
-    fn get_sldb_lines(&mut self, hvsc_path_or_sldb_file: &str) -> Result<impl Iterator<Item = io::Result<String>>, String> {
+    fn get_sldb_lines(&mut self, hvsc_path_or_sldb_file: &str) -> Result<Box<dyn Iterator<Item = io::Result<String>>>, String> {
         let mut sldb_file = PathBuf::from(hvsc_path_or_sldb_file);
         if !sldb_file.is_file() {
             sldb_file = Self::find_song_length_file(&sldb_file)?;

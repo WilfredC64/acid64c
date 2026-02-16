@@ -25,8 +25,8 @@ pub fn convert_num_key_to_number(key: char) -> i32 {
 }
 
 fn read_char() -> Option<char> {
-    if let Ok(Event::Key(KeyEvent{ code, kind, .. })) = read() {
-        if kind == KeyEventKind::Press {
+    if let Ok(Event::Key(KeyEvent{ code, kind, .. })) = read()
+        && kind == KeyEventKind::Press {
             match code {
                 KeyCode::Char(c) => return Some(c),
                 KeyCode::Esc => return Some(ESC_KEY),
@@ -35,7 +35,6 @@ fn read_char() -> Option<char> {
                 _ => ()
             }
         }
-    }
     None
 }
 

@@ -144,12 +144,10 @@ impl SidDataProcessor {
     }
 
     pub fn get_next_event_in_millis(&mut self) -> u64 {
-        if let Some(current_time) = self.current_time {
-            if self.next_time_in_micros > 0 {
-                let now = current_time.elapsed().as_micros();
-                if self.next_time_in_micros > now {
-                    return ((self.next_time_in_micros - now) / 1000) as u64;
-                }
+        if let Some(current_time) = self.current_time && self.next_time_in_micros > 0 {
+            let now = current_time.elapsed().as_micros();
+            if self.next_time_in_micros > now {
+                return ((self.next_time_in_micros - now) / 1000) as u64;
             }
         }
         0

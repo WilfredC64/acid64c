@@ -14,20 +14,18 @@ pub fn read_buffer_as_lines(buffer: &[u8]) -> impl Iterator<Item = io::Result<St
         .build(buffer)).lines()
 }
 
-pub fn read_text_file_as_lines(config_path: &PathBuf, max_file_size: Option<u64>) -> Result<impl Iterator<Item = io::Result<String>>, String> {
-    let lines = read_lines(config_path, max_file_size);
-    lines.map_err(|error| format!("Error reading file: {} -> {}", config_path.display(), error))
+pub fn read_text_file_as_lines(config_path: &PathBuf, max_file_size: Option<u64>) -> Result<Box<dyn Iterator<Item = io::Result<String>>>, String> {
+    read_lines(config_path, max_file_size)
+        .map_err(|error| format!("Error reading file: {} -> {}", config_path.display(), error))
 }
 
-fn read_lines(filename: &PathBuf, max_file_size: Option<u64>) -> io::Result<impl Iterator<Item = io::Result<String>>> {
+fn read_lines(filename: &PathBuf, max_file_size: Option<u64>) -> io::Result<Box<dyn Iterator<Item = io::Result<String>>>> {
     let file = File::open(filename)?;
-    if let Some(max_file_size) = max_file_size {
-        if file.metadata()?.len() > max_file_size {
-            return Err(Error::new(io::ErrorKind::InvalidData, "File too large"));
-        }
+    if let Some(max_file_size) = max_file_size && file.metadata()?.len() > max_file_size {
+        return Err(Error::new(io::ErrorKind::InvalidData, "File too large"));
     }
 
-    Ok(BufReader::new(DecodeReaderBytesBuilder::new()
+    Ok(Box::new(BufReader::new(DecodeReaderBytesBuilder::new()
         .encoding(Some(WINDOWS_1252))
-        .build(file)).lines())
+        .build(file)).lines()))
 }

@@ -133,11 +133,11 @@ impl HardSidUsb {
         }
     }
 
-    unsafe fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
+    fn convert_pchar_to_ansi_string(text: *const i8) -> Option<String> {
         if text.is_null() {
             None
         } else {
-            Some(CStr::from_ptr(text).to_string_lossy().to_string())
+            Some(unsafe { CStr::from_ptr(text) }.to_string_lossy().to_string())
         }
     }
 }
