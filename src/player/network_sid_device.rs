@@ -605,17 +605,14 @@ impl NetworkSidDevice {
             reg
         };
 
-        let sid_chip_number = if sid_reg < 0x20 || self.number_of_sids < 2 {
-            0
-        } else if sid_reg < 0x40 || self.number_of_sids < 3 {
-            1
-        } else {
-            2
-        };
+        let mut sid_chip_number = sid_reg / 0x20;
+        if (sid_chip_number + 1) as i32 > self.number_of_sids {
+            sid_chip_number = 0;
+        }
 
         self.write_buffer[self.buffer_index] = (cycles >> 8) as u8;
-        self.write_buffer[self.buffer_index + 1] = (cycles & 0xff) as u8;
-        self.write_buffer[self.buffer_index + 2] = (sid_chip_number << 5) as u8 + (sid_reg & 0x1f);
+        self.write_buffer[self.buffer_index + 1] = cycles as u8;
+        self.write_buffer[self.buffer_index + 2] = (sid_chip_number << 5) + (sid_reg & 0x1f);
         self.write_buffer[self.buffer_index + 3] = data;
         self.buffer_index += 4;
         self.buffer_cycles += cycles as u32;
