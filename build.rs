@@ -10,7 +10,13 @@ fn main() {
     }
 
     copy_acid64pro_library_to_build_folder();
-    println!("cargo:rerun-if-changed=library/");
+    println!("cargo:rerun-if-changed=library");
+
+    #[cfg(target_os = "linux")]
+    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
+
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path");
 }
 
 fn copy_acid64pro_library_to_build_folder() {
