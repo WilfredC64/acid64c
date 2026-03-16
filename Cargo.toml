@@ -33,7 +33,8 @@ features = ["static"]
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = [
-    "Win32_Media"
+    "Win32_Media",
+    "Win32_System_Threading"
 ] }
 
 [target.'cfg(windows)'.build-dependencies]

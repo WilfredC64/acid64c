@@ -18,6 +18,8 @@ fn main() {
         return;
     }
 
+    set_process_priority();
+
     match run() {
         Ok(_) => {}
         Err(message) => {
@@ -68,6 +70,25 @@ fn run() -> Result<(), String> {
     let mut console_player = ConsolePlayer::new(player, config.display_stil);
     console_player.play()?;
     Ok(())
+}
+
+fn set_process_priority() {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Threading::{
+            GetCurrentProcess, SetPriorityClass, ABOVE_NORMAL_PRIORITY_CLASS,
+        };
+        unsafe {
+            let _ = SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+        }
+    }
+    #[cfg(unix)]
+    {
+        const ABOVE_NORMAL_PRIORITY: i32 = -7;
+        unsafe {
+            libc::setpriority(libc::PRIO_PROCESS, 0, ABOVE_NORMAL_PRIORITY);
+        }
+    }
 }
 
 fn print_usage() {
