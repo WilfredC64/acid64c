@@ -349,19 +349,16 @@ impl Player {
                         device_state = self.process_sid_write(reg, data, cycles);
                         idle_count = 0;
                     },
-                    SidCommand::Read => {
-                        idle_count = 0;
-                    },
-                    SidCommand::Idle => {
-                        if self.sid_written {
+                    SidCommand::Read => idle_count = 0,
+                    SidCommand::Idle
+                        if self.sid_written => {
                             idle_count += cycles_per_second / 1000;
 
                             if idle_count >= cycles_per_second {
                                 self.sid_device.as_mut().unwrap().dummy_write(self.device_number, cycles_per_second);
                                 idle_count -= cycles_per_second
                             }
-                        }
-                    },
+                        },
                     _ => (),
                 }
             }

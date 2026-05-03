@@ -131,18 +131,16 @@ impl ConsolePlayer {
                             keyboard::flush_keyboard_buffer();
                         }
                     },
-                    keyboard::RIGHT_KEY => {
-                        if !remote_sidplayer_active {
+                    keyboard::RIGHT_KEY
+                        if !remote_sidplayer_active => {
                             self.toggle_fast_forward(&mut clock);
                             continue;
-                        }
-                    },
-                    keyboard::LEFT_KEY => {
-                        if !remote_sidplayer_active {
+                        },
+                    keyboard::LEFT_KEY
+                        if !remote_sidplayer_active => {
                             self.disable_fast_forward(&mut clock);
                             continue;
-                        }
-                    },
+                        },
                     keyboard::ESC_KEY => break,
                     _ => ()
                 };
