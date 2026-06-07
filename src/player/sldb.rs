@@ -14,6 +14,14 @@ const NEW_SLDB_FILE_NAME: &str = "Songlengths.md5";
 const MAX_SLDB_FILE_SIZE: u64 = 1024 * 1024 * 1024;
 const MIN_ENTRIES_CAPACITY: usize = 80_000;
 
+const DEFAULT_SLDB_MINUTES_STR: &str = "5";
+const DEFAULT_SLDB_SECONDS_STR: &str = "0";
+const DEFAULT_SLDB_MILLIS_STR: &str = "0";
+
+const DEFAULT_SLDB_MINUTES: i32 = 5;
+const DEFAULT_SLDB_SECONDS: i32 = 0;
+const DEFAULT_SLDB_MILLIS: i32 = 0;
+
 pub struct Sldb {
     songlengths: AHashMap<String, (String, String)>,
     new_md5_hash_used: bool
@@ -63,7 +71,7 @@ impl Sldb {
         Self::validate_file_format(&mut lines)
     }
 
-    fn get_sldb_lines(&mut self, hvsc_path_or_sldb_file: &str) -> Result<Box<dyn Iterator<Item = io::Result<String>>>, String> {
+    fn get_sldb_lines(&mut self, hvsc_path_or_sldb_file: &str) -> Result<impl Iterator<Item = io::Result<String>> + use<>, String> {
         let mut sldb_file = PathBuf::from(hvsc_path_or_sldb_file);
         if !sldb_file.is_file() {
             sldb_file = Self::find_song_length_file(&sldb_file)?;
@@ -163,12 +171,17 @@ impl Sldb {
     }
 
     fn convert_time_to_millis(song_length: &str) -> i32 {
-        let (time, millis) = song_length.split_once('.').unwrap_or((song_length, "0"));
-        let (minutes, seconds) = time.split_once(':').unwrap_or(("5", "0"));
+        let (time, millis) = song_length.split_once('.').unwrap_or((song_length, DEFAULT_SLDB_MILLIS_STR));
+        let (minutes, seconds) = time.split_once(':').unwrap_or((DEFAULT_SLDB_MINUTES_STR, DEFAULT_SLDB_SECONDS_STR));
 
-        let minutes = minutes.parse::<i32>().unwrap_or(5);
-        let seconds = seconds.parse::<i32>().unwrap_or(0);
-        let millis = millis.parse::<i32>().unwrap_or(0);
+        let minutes = minutes.parse::<i32>().unwrap_or(DEFAULT_SLDB_MINUTES);
+        let seconds = seconds.parse::<i32>().unwrap_or(DEFAULT_SLDB_SECONDS);
+        let millis = &millis[..millis.len().min(3)];
+        let millis = millis.parse::<i32>().unwrap_or(DEFAULT_SLDB_MILLIS) * match millis.len() {
+            1 => 100,
+            2 => 10,
+            _ => 1,
+        };
         (minutes * 60 + seconds) * 1000 + millis
     }
 }
