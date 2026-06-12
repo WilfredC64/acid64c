@@ -14,14 +14,6 @@ const NEW_SLDB_FILE_NAME: &str = "Songlengths.md5";
 const MAX_SLDB_FILE_SIZE: u64 = 1024 * 1024 * 1024;
 const MIN_ENTRIES_CAPACITY: usize = 80_000;
 
-const DEFAULT_SLDB_MINUTES_STR: &str = "5";
-const DEFAULT_SLDB_SECONDS_STR: &str = "0";
-const DEFAULT_SLDB_MILLIS_STR: &str = "0";
-
-const DEFAULT_SLDB_MINUTES: i32 = 5;
-const DEFAULT_SLDB_SECONDS: i32 = 0;
-const DEFAULT_SLDB_MILLIS: i32 = 0;
-
 pub struct Sldb {
     songlengths: AHashMap<String, (String, String)>,
     new_md5_hash_used: bool
@@ -39,7 +31,7 @@ impl Sldb {
         let (_, sldb_entry) = self.songlengths.get(md5_hash)?;
         let sub_tune_length = sldb_entry.split_whitespace().nth(sub_tune as usize)?;
         let stripped_length = Self::strip_indicators(sub_tune_length);
-        Some(Self::convert_time_to_millis(stripped_length))
+        Self::convert_time_to_millis(stripped_length)
     }
 
     pub fn get_hvsc_filename(&self, md5_hash: &str) -> Option<String> {
@@ -170,18 +162,57 @@ impl Sldb {
         song_length.find('(').map_or(song_length, |index| &song_length[..index])
     }
 
-    fn convert_time_to_millis(song_length: &str) -> i32 {
-        let (time, millis) = song_length.split_once('.').unwrap_or((song_length, DEFAULT_SLDB_MILLIS_STR));
-        let (minutes, seconds) = time.split_once(':').unwrap_or((DEFAULT_SLDB_MINUTES_STR, DEFAULT_SLDB_SECONDS_STR));
+    #[inline]
+    fn append_digit(acc: i32, b: u8) -> i32 {
+        acc * 10 + (b - b'0') as i32
+    }
 
-        let minutes = minutes.parse::<i32>().unwrap_or(DEFAULT_SLDB_MINUTES);
-        let seconds = seconds.parse::<i32>().unwrap_or(DEFAULT_SLDB_SECONDS);
-        let millis = &millis[..millis.len().min(3)];
-        let millis = millis.parse::<i32>().unwrap_or(DEFAULT_SLDB_MILLIS) * match millis.len() {
-            1 => 100,
-            2 => 10,
-            _ => 1,
-        };
-        (minutes * 60 + seconds) * 1000 + millis
+    pub fn convert_time_to_millis(song_length: &str) -> Option<i32> {
+        if song_length.is_empty() {
+            return None;
+        }
+        let bytes = song_length.as_bytes();
+
+        let mut minutes = 0;
+        let mut seconds = 0;
+        let mut millis = 0;
+        let mut digits = 0;
+        let mut seen_colon = false;
+        let mut seen_dot = false;
+
+        for &b in bytes {
+            match b {
+                b'0'..=b'9' => {
+                    digits += 1;
+                    if !seen_colon {
+                        minutes = Self::append_digit(minutes, b);
+                    } else if !seen_dot {
+                        seconds = Self::append_digit(seconds, b);
+                    } else {
+                        millis = Self::append_digit(millis, b);
+                    }
+                }
+                b':' => {
+                    seen_colon = true;
+                    digits = 0;
+                }
+                b'.' => {
+                    seen_dot = true;
+                    digits = 0;
+                }
+                _ => return None,
+            }
+        }
+
+        if !seen_colon { return None; }
+        if !seen_dot && digits != 2 { return None; }
+        if seen_dot && !(1..=3).contains(&digits) { return None; }
+        if seconds > 59 { return None; }
+
+        if seen_dot {
+            millis *= [100, 10, 1][digits - 1];
+        }
+
+        Some((minutes * 60 + seconds) * 1000 + millis)
     }
 }
