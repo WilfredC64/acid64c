@@ -60,7 +60,7 @@ const BUSY_WAIT_MILLIS: u64 = 1;
 const PAUSE_SLEEP_MILLIS: u64 = 10;
 const ABORT_DEVICE_DELAY_MILLIS: u64 = 20;
 
-const DEFAULT_SONG_LENGTH_IN_MILLIS: i32 = 300000;
+const DEFAULT_SONG_LENGTH_IN_MILLIS: i32 = 5 * 60 * 1000;
 
 pub const ABORT_NO: AbortType = 0;
 pub const ABORT_TO_QUIT: AbortType = 1;
