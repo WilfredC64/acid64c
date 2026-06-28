@@ -14,7 +14,7 @@ ahash = "0.8"
 atomicring = "1.2"
 attohttpc = { version = "0.31", features = ["multipart-form"] }
 chrono = "0.4"
-crossbeam-channel = "0.5.15"
+crossbeam-channel = "0.5"
 crossterm = "0.29"
 encoding = "0.2"
 encoding_rs = "0.8"
@@ -23,7 +23,7 @@ if-addrs = "0.15"
 libloading = "0.9"
 parking_lot = "0.12"
 timer = "0.2"
-thread-priority = "3.0"
+thread-priority = "3.1"
 ringbuf = "0.5"
 rusb = "0.9"
 
@@ -32,7 +32,7 @@ version = "0.33"
 features = ["static"]
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = [
+windows = { version = "0.62", features = [
     "Win32_Media",
     "Win32_System_Threading"
 ] }
