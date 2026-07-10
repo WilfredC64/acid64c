@@ -266,10 +266,10 @@ impl NetworkSidDevice {
 
                 Ok(())
             } else {
-                Err(format!("Could not connect to: {}.", &socket_address))
+                Err(format!("Could not connect to: {}.", socket_address))
             }
         } else {
-            Err(format!("Could not find IPV4 address for: {}.", &host_name))
+            Err(format!("Could not find IPV4 address for: {}.", host_name))
         }
     }
 

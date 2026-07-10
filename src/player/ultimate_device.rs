@@ -219,11 +219,11 @@ impl UltimateDevice {
         self.test_connection();
 
         if self.is_connected() {
-            self.socket = Some(Self::bind_socket().map_err(|_| format!("Could not connect to: {}.", &ip_address))?);
+            self.socket = Some(Self::bind_socket().map_err(|_| format!("Could not connect to: {}.", ip_address))?);
             self.socket_url = Some([ip_address, "64"].join(":"));
             Ok(())
         } else {
-            Err(format!("Could not connect to: {}.", &server_url))
+            Err(format!("Could not connect to: {}.", server_url))
         }
     }
 
@@ -358,7 +358,7 @@ impl UltimateDevice {
                 .with_file(Self::create_part( "prg", filename, sid_data))
                 .build().unwrap();
 
-            let url = format!("{}{RUN_PRG_ENDPOINT}", &self.server_url.as_ref().unwrap());
+            let url = format!("{}{RUN_PRG_ENDPOINT}", self.server_url.as_ref().unwrap());
             self.send_file(url, form);
         } else {
             self.disconnect_with_error("File type not supported".to_string());
@@ -373,7 +373,7 @@ impl UltimateDevice {
             .with_file(Self::create_part("sid", &filename, sid_data))
             .build().unwrap();
 
-        let url = format!("{}{SID_PLAY_ENDPOINT}?{SONG_NR_PARAM}={}", &self.server_url.as_ref().unwrap(), song_number + 1);
+        let url = format!("{}{SID_PLAY_ENDPOINT}?{SONG_NR_PARAM}={}", self.server_url.as_ref().unwrap(), song_number + 1);
         self.send_file(url, form);
     }
 
@@ -382,7 +382,7 @@ impl UltimateDevice {
             .with_file(Self::create_part( "crt", "acid64_pause.crt", PAUSE_SID_FILE))
             .build().unwrap();
 
-        let url = format!("{}{RUN_CRT_ENDPOINT}", &self.server_url.as_ref().unwrap());
+        let url = format!("{}{RUN_CRT_ENDPOINT}", self.server_url.as_ref().unwrap());
         self.send_file(url, form);
     }
 
