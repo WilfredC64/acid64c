@@ -76,7 +76,7 @@ impl Stil {
     where
         T: Iterator<Item = Result<String, Error>>
     {
-        let mut stil_filename = "".to_string();
+        let mut stil_filename = String::new();
         let mut global = false;
         Self::validate_file_format(text_lines, &mut stil_filename, &mut global)?;
 
@@ -119,7 +119,7 @@ impl Stil {
         Err(format!("STIL file not found in: {}", hvsc_path.to_string_lossy()))
     }
 
-    fn add_stil_entry(&mut self, stil_filename: &String, stil_entry: &[String], global: bool) {
+    fn add_stil_entry(&mut self, stil_filename: &str, stil_entry: &[String], global: bool) {
         if !stil_entry.is_empty() {
             if global {
                 self.global_comments
@@ -160,13 +160,9 @@ impl Stil {
     {
         const MAX_LINES_TO_VALIDATE: usize = 50;
 
-        for (index, line) in text_lines.enumerate() {
+        for line in text_lines.by_ref().take(MAX_LINES_TO_VALIDATE) {
             let line = line.map_err(|error| format!("Error reading STIL file -> {error}"))?;
             let trimmed_line = line.trim();
-
-            if index >= MAX_LINES_TO_VALIDATE {
-                break;
-            }
 
             let first_char = trimmed_line.chars().next().unwrap_or('#');
             match first_char {

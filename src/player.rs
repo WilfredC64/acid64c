@@ -172,7 +172,7 @@ impl Player {
             sid_device: None,
             sid_data_processor: SidDataProcessor::new(),
             filename: None,
-            md5_hash: "".to_string(),
+            md5_hash: String::new(),
             device_number: 0,
             device_numbers: vec![],
             song_number: 0,

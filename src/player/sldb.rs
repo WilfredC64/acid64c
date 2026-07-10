@@ -79,9 +79,9 @@ impl Sldb {
     {
         Self::validate_file_format(text_lines)?;
 
-        let mut song_lengths= "".to_string();
-        let mut md5_hash = "".to_string();
-        let mut hvsc_filename = "".to_string();
+        let mut song_lengths= String::new();
+        let mut md5_hash = String::new();
+        let mut hvsc_filename = String::new();
 
         self.songlengths.clear();
 

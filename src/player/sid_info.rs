@@ -37,9 +37,9 @@ pub struct SidInfo {
 impl SidInfo {
     pub fn new() -> SidInfo {
         SidInfo {
-            title: "".to_string(),
-            author: "".to_string(),
-            released: "".to_string(),
+            title: String::new(),
+            author: String::new(),
+            released: String::new(),
             default_song: 0,
             number_of_songs: 0,
             clock_frequency: 0,
@@ -50,15 +50,15 @@ impl SidInfo {
             load_address: 0,
             load_end_address: 0,
             stil_entry: None,
-            md5_hash: "".to_string(),
+            md5_hash: String::new(),
             song_length: 0,
 
             mus_text: [0; 32*5],
             mus_colors: [0; 32*5],
 
-            file_type: "".to_string(),
-            file_format: "".to_string(),
-            filename: "".to_string(),
+            file_type: String::new(),
+            file_format: String::new(),
+            filename: String::new(),
 
             basic_sid: false,
 
