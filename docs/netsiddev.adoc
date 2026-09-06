@@ -1,0 +1,251 @@
+:toc:
+:toclevels: 3
+
+== [[NetSIDDev]]Network SID Device
+
+=== Implementation of a network SID device protocol
+
+You can implement your own SID device (hardware or software-based) and control it using JSIDPlay2.
+The network SID device protocol has been defined to communicate with these implementations.
+
+This protocol is called: Network SID device protocol.
+Communication is done via socket connection and port 6581 by default.
+
+==== General Overview
+
+Since version 2, the protocol is structured as a request-response protocol:
+
+* Requests are variable length, with a minimum packet size 4 bytes. There are
+three fields and an amorphous data blob:
+** 8-bit unsigned as command.
+** 8-bit unsigned as SID number.
+** 16-bit unsigned as the length of data attached to the header in bytes.
+** Data (if any)
+
+* All commands are ACKed with a response packet that takes one of the
+following forms:
+** OK means that the commands were accepted by the server and can be discarded
+by the client. No data will be appended to response.
+** BUSY means that no part of the current command was accepted due to filled
+queue condition, and that the client should wait and retry it later. One
+millisecond could be a suitable delay before retry. Queue length is limited
+both by the number of events and maximum time drift between playback clock and
+client clock. No data will be attended to response.
+** READ: successful read operation, one byte value follows that is the value
+read from SID.
+** VERSION: response to VERSION operation. Version number will be appended
+to the response.
+** COUNT: number of SIDs supported by network device.
+** INFO: info packet, which contains model code and zero-padded 20-byte
+UTF-8 encoded string representing model name.
+
+
+* The maximum packet length is 64k + header length. It is suggested that only short
+packets are transmitted, in the order of 1k and containing no more than about
+1 ms worth of events. Otherwise, the client-server desync brings jitter that
+may have unpleasant consequences. At the limit it's possible to simply send a
+fixed header that describes a single Write with each packet, but this is
+probably measurably less efficient.
+
+==== Protocol version information
+
+* Version 1
+** It Contains commands FLUSH, TRY_SET_SID_COUNT, MUTE, TRY_RESET, TRY_DELAY,
+TRY_WRITE, TRY_READ and GET_VERSION. There are eight SID devices where bit 0 sets
+6581/8580, bit 1 sets PAL/NTSC and bit 2 sets RESAMPLE/DECIMATE mode of operation.
+* Version 2
+** It contains commands TRY_SET_SAMPLING, TRY_SET_CLOCKING, GET_CONFIG_COUNT,
+GET_CONFIG_INFO, SET_SID_POSITION, SET_SID_LEVEL, TRY_SET_SID_MODEL.
+There are multiple SID devices of type 6581 and 8580. The commands TRY_SET_SAMPLING
+and TRY_SET_CLOCKING can be used to set a particular SID kind.
+* Version 3
+** supports muting of voice number 4 (digi channel).
+* Version 4
+** contains commands SET_DELAY, SET_FADE_IN, SET_FADE_OUT and SET_SID_HEADER.
+* Version 5
+** contains commands TRY_WRITE_EX, TRY_READ_EX.
+
+==== Command Overview
+
+* The structure of data is specific to command. Some commands require data, others
+will not use data even if such was provided. Some commands require specific
+lengths for the data packets. If the data length is not correct, the results are
+undefined. Known commands are identified by small integers, starting from 0:
+
+** FLUSH (0): destroy queued data on all SIDs and cease audio production.
+
+*** sid number is ignored.
+*** data packet must be 0 length.
+*** should probably be followed by RESET (SID is in unpredictable state).
+*** always returns OK
+
+** TRY_SET_SID_COUNT (1): set the number of SID devices available for writing
+
+*** sid number equals the count of SIDs wanted.
+*** data packet must be 0 length.
+*** returns BUSY until audio quiescent, otherwise OK.
+
+** MUTE (2): mute/unmute a voice on specified SID
+
+*** the data packet must contain two 8-bit unsigned bytes:
+
+**** the voice number from 0 to 3 (voice number 3 (digi) is supported since
+version 3. For version 2 of the protocol, only voice numbers 0 to 2 are
+supported.
+**** Zero or one to disable/enable voice
+*** this command bypasses the buffer and takes immediate effect.
+*** always returns OK
+
+** TRY_RESET (3): reset all SIDs, setting volume to provided value.
+
+*** a data packet must be an 8-bit unsigned value written to volume
+register.
+*** returns BUSY until audio quiescent, otherwise OK.
+
+** TRY_DELAY (4): inform emulation that no events have occurred for a given
+count of cycles
+
+*** the data packet must be a 16-bit unsigned value interpreted as a delay in C64
+clocks. 0 is not allowed.
+*** it allows audio generation in the absence of other activity.
+*** returns BUSY if there is already enough data for playback, otherwise OK.
+
+** TRY_WRITE (5): try to queue a number of write-to-sid events for up to 8 SID chips.
+
+*** data packet must be 4*N bytes long, repeating this structure:
+
+**** 16-bit unsigned value interpreted as delay before the write in C64
+clocks.
+**** 8-bit unsigned SID register address: 0x00–0xff, with each SID occupying a 0x20-byte range (SID 1: 0x00–0x1f, SID 2: 0x20–0x3f, ..., SID 8: 0xe0–0xff).
+**** 8-bit unsigned data value to write
+*** returns BUSY if there is already enough data for playback, otherwise OK.
+
+** TRY_READ (6): reads SID chip register for up to 8 SID chips.
+
+*** data packet must be a 4N+3 bytes long, where N >= 0. The protocol used
+for the first N packets is the same as the TRY_WRITE protocol, returning
+potentially BUSY if the delay implied by the READ, or the WRITEs can not yet
+be buffered.
+*** Read packet structure trails the write packet structure:
+
+**** 16-bit unsigned value interpreted as delay before the read in C64 clocks.
+**** 8-bit unsigned SID register address: 0x00–0xff, with each SID occupying a 0x20-byte range (SID 1: 0x00–0x1f, SID 2: 0x20–0x3f, ..., SID 8: 0xe0–0xff).
+
+*** returns BUSY if there is already enough data for playback, otherwise READ
+and a data byte, which is the read value from SID.
+
+** GET_VERSION (7): returns the version of the SID Network protocol.
+
+*** sid number is ignored.
+*** data packet must be 0 length.
+*** returns two bytes: VERSION and a data byte, which is the version of the SID
+Network protocol.
+
+** TRY_SET_SAMPLING (8): set the resampling method for all SID devices.
+
+*** sid number is ignored.
+*** the data packet is one byte long and contains:
+**** Zero for pure decimator (low quality)
+**** One for low-pass filtered decimator (high-quality).
+
+*** returns BUSY until audio quiescent, otherwise OK.
+
+** SET_CLOCKING (9): set the clock source speed for all SID devices.
+
+*** sid number is ignored.
+*** the data packet is one byte long and contains:
+**** Zero for PAL
+**** One for NTSC
+*** returns BUSY until audio quiescent, otherwise OK.
+
+** GET_CONFIG_COUNT (10): Query number of SID configurations supported by
+server.
+*** sid number is ignored.
+*** data packet is ignored and should be zero length.
+*** it always returns COUNT and an 8-bit unsigned value that is 1 larger than the
+maximum valid configuration.
+
+** GET_CONFIG_INFO (11): query the name and model of the SID configuration.
+
+*** data packet is ignored and should be zero length.
+*** returns INFO and 8-bit unsigned-value and a string in ISO-8859-1 encoding
+with a maximum of 255 characters excluding a null-terminated byte
+**** INFO code
+**** Model: 0 = 6581, 1 = 8580
+**** Model name (max. 255 chars + 1 null terminated byte)
+
+** SET_SID_POSITION (12): set sid position on the audio mix
+*** the data packet is one byte long and contains:
+**** -100 to zero: audio is panned to left
+**** 0 to 100: audio is panned to right
+*** it always returns OK.
+
+** SET_SID_LEVEL (13): set SID level adjustment in dB
+*** the data packet is one byte long and contains:
+**** 8-bit signed dB adjustment in cB (centibels), 0 means no adjustment
+*** it always returns OK.
+
+** SET_SID_MODEL (14):
+
+*** the data packet is one byte long and contains:
+**** 8-bit unsigned value between 0 \<= value \<= max_config-1
+*** it always returns OK.
+
+** SET_DELAY (15): set SID output delay in ms
+*** the data packet is one byte long and contains:
+**** 8-bit unsigned ms delay, 0 means no delay
+*** it always returns OK.
+
+** SET_FADE_IN (16): set fade-in time in ms.
+
+*** sid number is ignored.
+*** the data packet is four bytes long and contains:
+**** 32-bit unsigned fade-in time in milliseconds.
+**** Note: Since only the client knows the song length, you must send this command when the fade-in time is reached (at the start of the tune).
+*** returns BUSY until audio quiescent, otherwise OK.
+
+
+** SET_FADE_OUT (17): set fade-out time in ms.
+
+*** sid number is ignored.
+*** the data packet is four bytes long and contains:
+**** 32-bit unsigned fade-out time in milliseconds.
+**** Note: Since only the client knows the song length, you must send this command when the fade-out time is reached (near the end of the tune).
+*** returns BUSY until audio quiescent, otherwise OK.
+
+
+** SET_SID_HEADER (18): set SID header bytes
+*** The data packet is at least 124 bytes long and depends on the size of the SID header. It contains:
+**** SID header bytes. This optional command can be used to show information of what is currently being played.
+*** it always returns OK.
+
+** TRY_WRITE_EX (19): extended version of TRY_WRITE. Tries to queue a number of write events for up to 16 SID chips and FM OPL devices.
+
+*** data packet must be 5*N bytes long, repeating this structure:
+
+**** 16-bit unsigned value interpreted as delay before the write in C64
+clocks.
+**** 16-bit unsigned register address:
+***** 0x0000–0x01ff: SID register address, with each SID occupying a 0x20-byte range
+(SID 1: 0x0000–0x001f, SID 2: 0x0020–0x003f, …, SID 16: 0x01e0–0x01ff).
+***** 0xdf00–0xdfff: FM OPL register address corresponding to C64 I/O address $DF00–$DFFF.
+
+**** 8-bit unsigned data value to write
+*** returns BUSY if there is already enough data for playback, otherwise OK.
+
+** TRY_READ_EX (20): extended version of TRY_READ. Reads a register from up to 16 SID chips or FM OPL devices.
+
+*** data packet must be a 5N+4 bytes long, where N >= 0. The protocol used
+for the first N packets is the same as the TRY_WRITE_EX protocol, returning
+potentially BUSY if the delay implied by the READ, or the WRITEs can not yet
+be buffered.
+*** Read packet structure trails the write packet structure:
+
+**** 16-bit unsigned value interpreted as delay before the read in C64 clocks.
+**** 16-bit unsigned register address, using the same address ranges as TRY_WRITE_EX:
+***** 0x0000–0x01ff: SID register address, with each SID occupying a 0x20-byte range
+(SID 1: 0x0000–0x001f, SID 2: 0x0020–0x003f, …, SID 16: 0x01e0–0x01ff).
+***** 0xdf00–0xdfff: FM OPL register address corresponding to C64 I/O address $DF00–$DFFF.
+
+*** returns BUSY if there is already enough data for playback, otherwise READ
+and a data byte, which is the read value from the addressed device.
