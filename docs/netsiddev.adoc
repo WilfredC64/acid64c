@@ -20,64 +20,82 @@ three fields and an amorphous data blob:
 ** 8-bit unsigned as command.
 ** 8-bit unsigned as SID number.
 ** 16-bit unsigned as the length of data attached to the header in bytes.
-** Data (if any)
+** Data (if any).
 
-* All commands are ACKed with a response packet that takes one of the
-following forms:
-** OK means that the commands were accepted by the server and can be discarded
+* All multibyte integer values are transmitted in big-endian order
+(most significant byte first).
+
+* All commands are ACKed with a response packet. The first byte is an
+8-bit unsigned response code identifying one of the following forms:
+** OK (0) means that the commands were accepted by the server and can be discarded
 by the client. No data will be appended to response.
-** BUSY means that no part of the current command was accepted due to filled
-queue condition, and that the client should wait and retry it later. One
-millisecond could be a suitable delay before retry. Queue length is limited
-both by the number of events and maximum time drift between playback clock and
-client clock. No data will be attended to response.
-** READ: successful read operation, one byte value follows that is the value
-read from SID.
-** VERSION: response to VERSION operation. Version number will be appended
+** BUSY (1) means that no part of the current command was accepted because
+the playback queue cannot accept more data or the command must wait for
+audio to become quiescent. The client should wait and retry the command.
+One millisecond could be a suitable delay before retry. Queue length is
+limited both by the number of events and the maximum time drift between
+playback clock and client clock. No data is appended to the response.
+** ERROR (2): the request failed. The remaining response bytes, if any,
+contain the error message as an ISO-8859-1 encoded string.
+** READ (3): successful read operation, one byte value follows that is the value
+read from the addressed device.
+** VERSION (4): response to GET_VERSION operation. Version number will be appended
 to the response.
-** COUNT: number of SIDs supported by network device.
-** INFO: info packet, which contains model code and zero-padded 20-byte
-UTF-8 encoded string representing model name.
+** COUNT (5): number of SID configurations supported by network device.
+** INFO (6): info packet containing a model code and an ISO-8859-1
+encoded model name of up to 255 bytes.
 
-
-* The maximum packet length is 64k + header length. It is suggested that only short
-packets are transmitted, in the order of 1k and containing no more than about
-1 ms worth of events. Otherwise, the client-server desync brings jitter that
-may have unpleasant consequences. At the limit it's possible to simply send a
-fixed header that describes a single Write with each packet, but this is
+* The maximum packet length is 65,539 bytes, including the four-byte header.
+It is suggested that only short packets are transmitted, in the order of 1KB
+and containing no more than about 1 ms worth of events. Otherwise, the client-server
+desync brings jitter that may have unpleasant consequences. At the limit it's possible
+to simply send a single write event in each packet, but this is
 probably measurably less efficient.
 
 ==== Protocol version information
 
 * Version 1
-** It Contains commands FLUSH, TRY_SET_SID_COUNT, MUTE, TRY_RESET, TRY_DELAY,
+** It contains commands FLUSH, TRY_SET_SID_COUNT, MUTE, TRY_RESET, TRY_DELAY,
 TRY_WRITE, TRY_READ and GET_VERSION. There are eight SID devices where bit 0 sets
 6581/8580, bit 1 sets PAL/NTSC and bit 2 sets RESAMPLE/DECIMATE mode of operation.
 * Version 2
-** It contains commands TRY_SET_SAMPLING, TRY_SET_CLOCKING, GET_CONFIG_COUNT,
-GET_CONFIG_INFO, SET_SID_POSITION, SET_SID_LEVEL, TRY_SET_SID_MODEL.
+** It contains commands TRY_SET_SAMPLING, SET_CLOCKING, GET_CONFIG_COUNT,
+GET_CONFIG_INFO, SET_SID_POSITION, SET_SID_LEVEL, SET_SID_MODEL.
 There are multiple SID devices of type 6581 and 8580. The commands TRY_SET_SAMPLING
-and TRY_SET_CLOCKING can be used to set a particular SID kind.
+and SET_CLOCKING configure sampling and clocking for all SID devices.
 * Version 3
 ** supports muting of voice number 4 (digi channel).
 * Version 4
 ** contains commands SET_DELAY, SET_FADE_IN, SET_FADE_OUT and SET_SID_HEADER.
 * Version 5
-** contains commands TRY_WRITE_EX, TRY_READ_EX.
+** contains commands TRY_WRITE_EX, TRY_READ_EX, TRY_SET_FM_OPL.
+
+==== Error handling
+
+* unknown commands return ERROR.
+* commands with invalid data values or an incorrect data length,
+including missing required data, return ERROR.
+* errors are reported using the ERROR (2) response defined in
+General Overview.
+* the optional error message is intended for display or diagnostics.
+Clients must not depend on its presence or exact wording.
+* additional error conditions are described under the individual commands.
+* response descriptions under individual commands assume valid requests.
 
 ==== Command Overview
 
 * The structure of data is specific to command. Some commands require data, others
 will not use data even if such was provided. Some commands require specific
-lengths for the data packets. If the data length is not correct, the results are
-undefined. Known commands are identified by small integers, starting from 0:
+lengths for the data packets. Known commands are identified by small integers,
+starting from 0:
 
-** FLUSH (0): destroy queued data on all SIDs and cease audio production.
+** FLUSH (0): destroy queued data on all SIDs and FM OPL and cease
+audio production.
 
 *** sid number is ignored.
 *** data packet must be 0 length.
-*** should probably be followed by RESET (SID is in unpredictable state).
-*** always returns OK
+*** should probably be followed by TRY_RESET (SID is in unpredictable state).
+*** always returns OK.
 
 ** TRY_SET_SID_COUNT (1): set the number of SID devices available for writing
 
@@ -89,17 +107,18 @@ undefined. Known commands are identified by small integers, starting from 0:
 
 *** the data packet must contain two 8-bit unsigned bytes:
 
-**** the voice number from 0 to 3 (voice number 3 (digi) is supported since
-version 3. For version 2 of the protocol, only voice numbers 0 to 2 are
-supported.
-**** Zero or one to disable/enable voice
+**** the voice number from 0 to 3. Voice number 3 (digi) is supported
+since version 3. Version 2 supports only voice numbers 0 to 2.
+**** Zero or one to disable/enable voice.
 *** this command bypasses the buffer and takes immediate effect.
-*** always returns OK
+*** always returns OK.
 
-** TRY_RESET (3): reset all SIDs, setting volume to provided value.
+** TRY_RESET (3): reset all SIDs and the enabled FM OPL device.
 
-*** a data packet must be an 8-bit unsigned value written to volume
-register.
+*** the data packet must contain one 8-bit unsigned value written to
+the volume register of each SID.
+*** if FM OPL is enabled, it is reset to its initial state. The volume
+value does not apply to FM OPL.
 *** returns BUSY until audio quiescent, otherwise OK.
 
 ** TRY_DELAY (4): inform emulation that no events have occurred for a given
@@ -117,7 +136,9 @@ clocks. 0 is not allowed.
 **** 16-bit unsigned value interpreted as delay before the write in C64
 clocks.
 **** 8-bit unsigned SID register address: 0x00–0xff, with each SID occupying a 0x20-byte range (SID 1: 0x00–0x1f, SID 2: 0x20–0x3f, ..., SID 8: 0xe0–0xff).
-**** 8-bit unsigned data value to write
+**** 8-bit unsigned data value to write.
+
+*** accesses to unconfigured SIDs are ignored, but their delays still apply.
 *** returns BUSY if there is already enough data for playback, otherwise OK.
 
 ** TRY_READ (6): reads SID chip register for up to 8 SID chips.
@@ -131,6 +152,8 @@ be buffered.
 **** 16-bit unsigned value interpreted as delay before the read in C64 clocks.
 **** 8-bit unsigned SID register address: 0x00–0xff, with each SID occupying a 0x20-byte range (SID 1: 0x00–0x1f, SID 2: 0x20–0x3f, ..., SID 8: 0xe0–0xff).
 
+*** accesses to unconfigured SIDs are ignored, but their delays still apply.
+*** an ignored read returns READ followed by 0x00.
 *** returns BUSY if there is already enough data for playback, otherwise READ
 and a data byte, which is the read value from SID.
 
@@ -138,14 +161,14 @@ and a data byte, which is the read value from SID.
 
 *** sid number is ignored.
 *** data packet must be 0 length.
-*** returns two bytes: VERSION and a data byte, which is the version of the SID
-Network protocol.
+*** returns VERSION (4), followed by:
+**** Version: 8-bit unsigned protocol version number.
 
 ** TRY_SET_SAMPLING (8): set the resampling method for all SID devices.
 
 *** sid number is ignored.
 *** the data packet is one byte long and contains:
-**** Zero for pure decimator (low quality)
+**** Zero for pure decimator (low quality).
 **** One for low-pass filtered decimator (high-quality).
 
 *** returns BUSY until audio quiescent, otherwise OK.
@@ -154,25 +177,25 @@ Network protocol.
 
 *** sid number is ignored.
 *** the data packet is one byte long and contains:
-**** Zero for PAL
-**** One for NTSC
+**** Zero for PAL.
+**** One for NTSC.
 *** returns BUSY until audio quiescent, otherwise OK.
 
 ** GET_CONFIG_COUNT (10): Query number of SID configurations supported by
 server.
 *** sid number is ignored.
 *** data packet is ignored and should be zero length.
-*** it always returns COUNT and an 8-bit unsigned value that is 1 larger than the
-maximum valid configuration.
+*** returns COUNT (5), followed by:
+**** Count: 8-bit unsigned number of SID configurations.
 
 ** GET_CONFIG_INFO (11): query the name and model of the SID configuration.
 
+*** sid number specifies the SID configuration index.
 *** data packet is ignored and should be zero length.
-*** returns INFO and 8-bit unsigned-value and a string in ISO-8859-1 encoding
-with a maximum of 255 characters excluding a null-terminated byte
-**** INFO code
-**** Model: 0 = 6581, 1 = 8580
-**** Model name (max. 255 chars + 1 null terminated byte)
+*** returns INFO (6), followed by:
+**** Model: 8-bit unsigned value, 0 = 6581, 1 = 8580.
+**** Model name: null-terminated ISO-8859-1 encoded string of up to
+255 bytes, excluding the terminator.
 
 ** SET_SID_POSITION (12): set sid position on the audio mix
 *** the data packet is one byte long and contains:
@@ -182,7 +205,7 @@ with a maximum of 255 characters excluding a null-terminated byte
 
 ** SET_SID_LEVEL (13): set SID level adjustment in dB
 *** the data packet is one byte long and contains:
-**** 8-bit signed dB adjustment in cB (centibels), 0 means no adjustment
+**** 8-bit signed level adjustment in steps of 0.2 dB, 0 means no adjustment.
 *** it always returns OK.
 
 ** SET_SID_MODEL (14):
@@ -229,8 +252,9 @@ clocks.
 ***** 0x0000–0x01ff: SID register address, with each SID occupying a 0x20-byte range
 (SID 1: 0x0000–0x001f, SID 2: 0x0020–0x003f, …, SID 16: 0x01e0–0x01ff).
 ***** 0xdf00–0xdfff: FM OPL register address corresponding to C64 I/O address $DF00–$DFFF.
-
 **** 8-bit unsigned data value to write
+*** accesses to disabled FM OPL or unconfigured SIDs are ignored,
+but their delays still apply.
 *** returns BUSY if there is already enough data for playback, otherwise OK.
 
 ** TRY_READ_EX (20): extended version of TRY_READ. Reads a register from up to 16 SID chips or FM OPL devices.
@@ -247,5 +271,24 @@ be buffered.
 (SID 1: 0x0000–0x001f, SID 2: 0x0020–0x003f, …, SID 16: 0x01e0–0x01ff).
 ***** 0xdf00–0xdfff: FM OPL register address corresponding to C64 I/O address $DF00–$DFFF.
 
+*** accesses to disabled FM OPL or unconfigured SIDs are ignored,
+but their delays still apply.
+*** an ignored read returns READ followed by 0x00.
 *** returns BUSY if there is already enough data for playback, otherwise READ
 and a data byte, which is the read value from the addressed device.
+
+** TRY_SET_FM_OPL (21): enable or disable FM OPL for the current connection.
+
+*** sid number is ignored.
+*** the data packet is one byte long and contains:
+**** Zero or one to disable/enable FM OPL
+*** FM OPL is disabled by default on a new connection. Clients should
+explicitly enable or disable it before playback of each tune.
+*** enabling a disabled device resets it and starts processing and audio
+output. Disabling it stops both.
+*** enabling an already enabled device or disabling an already disabled
+device returns OK without resetting it or interrupting playback.
+Disabling FM OPL on an unsupported device also returns OK.
+*** returns ERROR when enabling FM OPL on a device that does not
+support it.
+*** returns BUSY until audio quiescent, otherwise OK.
