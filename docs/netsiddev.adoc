@@ -266,13 +266,10 @@ be buffered.
 *** Read packet structure trails the write packet structure:
 
 **** 16-bit unsigned value interpreted as delay before the read in C64 clocks.
-**** 16-bit unsigned register address, using the same address ranges as TRY_WRITE_EX:
-***** 0x0000–0x01ff: SID register address, with each SID occupying a 0x20-byte range
+**** 16-bit unsigned register address: 0x0000–0x01ff: SID register address, with each SID occupying a 0x20-byte range
 (SID 1: 0x0000–0x001f, SID 2: 0x0020–0x003f, …, SID 16: 0x01e0–0x01ff).
-***** 0xdf00–0xdfff: FM OPL register address corresponding to C64 I/O address $DF00–$DFFF.
 
-*** accesses to disabled FM OPL or unconfigured SIDs are ignored,
-but their delays still apply.
+*** accesses to unconfigured SIDs are ignored, but their delays still apply.
 *** an ignored read returns READ followed by 0x00.
 *** returns BUSY if there is already enough data for playback, otherwise READ
 and a data byte, which is the read value from the addressed device.
