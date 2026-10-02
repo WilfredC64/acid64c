@@ -198,7 +198,7 @@ impl UsbSidScheduler {
             let count = queue.pop_slice(&mut write_buffer);
 
             let mut total_cycles: u32 = 0;
-            for (chunk, sid_write) in byte_buffer.chunks_exact_mut(4).zip(&write_buffer[..count]) {
+            for (chunk, sid_write) in byte_buffer.as_chunks_mut::<4>().0.iter_mut().zip(&write_buffer[..count]) {
                 // subtract 1 from cycles since the hardware adds 1 extra cycle to sync with the internal clock
                 let cycles = sid_write.cycles.saturating_sub(1);
                 chunk[0] = sid_write.reg;
